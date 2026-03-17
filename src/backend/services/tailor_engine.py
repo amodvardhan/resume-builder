@@ -1347,6 +1347,8 @@ def finalize_document(
 
     Returns ``{"resume_url": str, "cover_letter_url": str}``.
     """
+    from .pdf_renderer import build_resume_pdf, build_cover_letter_pdf
+
     if template_path and template_path.exists():
         resume_fields: dict[str, str] = {}
         for key in ("summary", "skills", "education", "certifications"):
@@ -1365,7 +1367,15 @@ def finalize_document(
     cover_letter_text = content.get("cover_letter", "")
     cl_filename = build_cover_letter_docx(cover_letter_text, template_style=template_style) if cover_letter_text else ""
 
-    return {"resume_url": resume_filename, "cover_letter_url": cl_filename}
+    resume_pdf = build_resume_pdf(content, template_style=template_style)
+    cl_pdf = build_cover_letter_pdf(cover_letter_text, template_style=template_style) if cover_letter_text else ""
+
+    return {
+        "resume_url": resume_filename,
+        "cover_letter_url": cl_filename,
+        "resume_pdf_url": resume_pdf,
+        "cover_letter_pdf_url": cl_pdf,
+    }
 
 
 async def tailor_resume(
@@ -1407,4 +1417,6 @@ async def tailor_resume(
         "tailored_resume_url": result["resume_url"],
         "cover_letter_text": draft["cover_letter"],
         "cover_letter_url": result["cover_letter_url"],
+        "resume_pdf_url": result.get("resume_pdf_url", ""),
+        "cover_letter_pdf_url": result.get("cover_letter_pdf_url", ""),
     }

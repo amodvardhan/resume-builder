@@ -73,14 +73,15 @@
   * [ ] The downloadable `.docx` splits education and certifications on `;` and `\n` into separate paragraphs.
 
 ## REQ-010: Document Quality & PDF Download
-* **Description:** Generated documents must have professional spacing and layout. Users can download as PDF (default) or `.docx`.
+* **Description:** Generated documents must have professional spacing and layout. PDF output must visually match the UI preview. Users can download as PDF (default) or `.docx`.
 * **Acceptance Criteria:**
   * [ ] The modern template sidebar covers the full page height in the `.docx`, extending to all pages if content overflows.
   * [ ] All template builders use consistent paragraph spacing: 14pt line spacing, 6pt space-after for body, 16pt space-before / 8pt space-after for headings.
   * [ ] Experience blocks have proper indentation for bullet points and spacing between role titles and content.
-  * [ ] Download endpoint supports `?format=pdf` (default) and `?format=docx` query parameter.
-  * [ ] PDF conversion uses `docx2pdf` (MS Word on macOS/Windows, LibreOffice on Linux) with result caching.
-  * [ ] Frontend download buttons default to PDF with a secondary `.docx` option.
+  * [ ] PDF is generated from HTML/CSS (same design as UI) via WeasyPrint — cross-platform, no MS Word/LibreOffice/browser dependency, no OS permission prompts.
+  * [ ] All 5 template styles (classic, modern, minimal, executive, creative) have HTML/CSS equivalents in `pdf_renderer.py` that match the frontend `index.css` template classes.
+  * [ ] PDF and DOCX are pre-generated during `finalize_document()` and served as static files (no on-demand conversion).
+  * [ ] Frontend download buttons: primary PDF button + secondary `.docx` button for both resume and cover letter.
 
 ## REQ-011: HTML-to-Rich-Text in Generated Documents
 * **Description:** When content contains HTML markup (e.g., `<b>`, `<strong>`, `<i>`, `<em>`) from LLM output or user edits, the generated `.docx` must convert these to proper Word formatting (bold/italic runs) instead of displaying raw HTML tags as literal text.

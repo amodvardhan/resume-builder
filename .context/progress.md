@@ -129,10 +129,14 @@
   > `_add_experience_block`: role title gets `space_before = Pt(8)`, `space_after = Pt(2)`. Bullets get `left_indent = Pt(14)`, `space_after = Pt(2)`. Modern template experience lines similarly updated.
 * [x] Download endpoint supports `?format=pdf` (default) and `?format=docx` query parameter.
   > `GET /api/v1/files/{file_name}?format=pdf|docx` in `main.py`. PDF is the default format. Falls back to docx silently if LibreOffice is unavailable.
-* [x] PDF conversion uses `docx2pdf` (MS Word on macOS/Windows) with LibreOffice fallback and result caching.
-  > `_convert_docx_to_pdf()` uses `docx2pdf.convert()` as primary (works via MS Word AppleScript on macOS). Falls back to LibreOffice headless if `docx2pdf` not installed. Caches result PDF. Previously relied solely on LibreOffice which wasn't available on the user's machine.
-* [x] Frontend download buttons default to PDF with a secondary `.docx` option.
-  > `getFileDownloadUrl(fileName, format)` updated in `client.ts`. Done page shows primary "Resume PDF" + "Cover Letter PDF" buttons and secondary compact ".docx" buttons.
+* [x] PDF is generated from HTML/CSS via WeasyPrint — cross-platform, no OS permission prompts.
+  > **Architecture change**: Replaced `docx2pdf` (MS Word AppleScript — caused macOS permission dialogs, only worked on macOS with MS Word) with `weasyprint` (pure Python, cross-platform). New `pdf_renderer.py` generates HTML matching the frontend CSS classes exactly (`tpl-classic`, `tpl-modern`, `tpl-minimal`, `tpl-executive`, `tpl-creative`) and renders to PDF. The PDF looks identical to the UI preview.
+* [x] All 5 template styles have HTML/CSS equivalents in `pdf_renderer.py`.
+  > `_modern_resume_html()` renders 30/70 flex layout with sidebar. `_single_col_resume_html()` renders classic/minimal/executive/creative. Skills render as pill badges, education with separator lines, certifications with shield SVG icons — all matching the UI.
+* [x] PDF and DOCX are pre-generated during `finalize_document()`.
+  > `finalize_document()` in `tailor_engine.py` now calls both `build_resume_docx()`/`build_cover_letter_docx()` AND `build_resume_pdf()`/`build_cover_letter_pdf()`. Returns `resume_pdf_url` and `cover_letter_pdf_url` alongside docx URLs. Download endpoint simplified to serve static files by extension.
+* [x] Frontend download buttons: primary PDF + secondary .docx for both resume and cover letter.
+  > `TailorConfirmResponse` and `TailorResponse` now include `resume_pdf_url` and `cover_letter_pdf_url`. Done page uses PDF URLs for primary buttons, docx URLs for secondary buttons. `getFileDownloadUrl()` simplified (no format parameter).
 
 ## REQ-011: HTML-to-Rich-Text in Generated Documents
 

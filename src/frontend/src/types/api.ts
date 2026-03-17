@@ -86,6 +86,8 @@ export interface TailorResponse {
   tailored_resume_url: string;
   cover_letter_text: string;
   cover_letter_url: string;
+  resume_pdf_url: string;
+  cover_letter_pdf_url: string;
 }
 
 // Human-in-the-loop: Preview → Review → Confirm
@@ -134,6 +136,8 @@ export interface TailorConfirmResponse {
   tailored_resume_url: string;
   cover_letter_text: string;
   cover_letter_url: string;
+  resume_pdf_url: string;
+  cover_letter_pdf_url: string;
 }
 
 // Per-section regeneration

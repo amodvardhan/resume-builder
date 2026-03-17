@@ -217,6 +217,8 @@ export default function App() {
           tailored_resume_url: res.tailored_resume_url,
           cover_letter_text: res.cover_letter_text,
           cover_letter_url: "",
+          resume_pdf_url: "",
+          cover_letter_pdf_url: "",
         });
         setComposePhase("done");
       });
@@ -504,49 +506,49 @@ export default function App() {
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    {result.resume_pdf_url && (
+                      <a
+                        href={getFileDownloadUrl(result.resume_pdf_url)}
+                        download
+                        className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Resume PDF
+                      </a>
+                    )}
                     {result.tailored_resume_url && (
-                      <>
-                        <a
-                          href={getFileDownloadUrl(result.tailored_resume_url, "pdf")}
-                          download
-                          className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                          </svg>
-                          Resume PDF
-                        </a>
-                        <a
-                          href={getFileDownloadUrl(result.tailored_resume_url, "docx")}
-                          download
-                          title="Download as Word document"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
-                        >
-                          .docx
-                        </a>
-                      </>
+                      <a
+                        href={getFileDownloadUrl(result.tailored_resume_url)}
+                        download
+                        title="Download as Word document"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
+                      >
+                        .docx
+                      </a>
+                    )}
+                    {result.cover_letter_pdf_url && (
+                      <a
+                        href={getFileDownloadUrl(result.cover_letter_pdf_url)}
+                        download
+                        className="inline-flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5 text-xs font-semibold text-brand shadow-sm transition-all hover:bg-brand/10 hover:shadow-md"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Cover Letter PDF
+                      </a>
                     )}
                     {result.cover_letter_url && (
-                      <>
-                        <a
-                          href={getFileDownloadUrl(result.cover_letter_url, "pdf")}
-                          download
-                          className="inline-flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5 text-xs font-semibold text-brand shadow-sm transition-all hover:bg-brand/10 hover:shadow-md"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                          </svg>
-                          Cover Letter PDF
-                        </a>
-                        <a
-                          href={getFileDownloadUrl(result.cover_letter_url, "docx")}
-                          download
-                          title="Download as Word document"
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
-                        >
-                          .docx
-                        </a>
-                      </>
+                      <a
+                        href={getFileDownloadUrl(result.cover_letter_url)}
+                        download
+                        title="Download as Word document"
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
+                      >
+                        .docx
+                      </a>
                     )}
                   </div>
                 </div>
