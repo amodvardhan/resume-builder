@@ -1,11 +1,18 @@
-import axios, { AxiosError } from "axios";
+import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 import type {
   ApiError,
   Application,
+  AuthUser,
   CloneRequest,
   CloneResponse,
+  CrawlSource,
+  CrawlSourceCreatePayload,
+  CrawlSourceUpdatePayload,
+  LoginResponse,
+  RefreshResponse,
   RegenerateSectionRequest,
   RegenerateSectionResponse,
+  RegisterResponse,
   ResumeListItem,
   ResumeUploadResponse,
   TailorConfirmRequest,
@@ -25,10 +32,113 @@ import type {
 // Axios instance
 // ---------------------------------------------------------------------------
 
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000",
+  baseURL: BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
+
+// ---------------------------------------------------------------------------
+// Custom event emitted when a token refresh fails — lets AuthContext react
+// without coupling the interceptor to React state.
+// ---------------------------------------------------------------------------
+
+export const AUTH_FORCE_LOGOUT_EVENT = "meridian:force-logout";
+
+// ---------------------------------------------------------------------------
+// Request interceptor — attach Bearer token
+// ---------------------------------------------------------------------------
+
+api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+  const token = localStorage.getItem("access_token");
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// ---------------------------------------------------------------------------
+// Response interceptor — silent token refresh on 401
+// ---------------------------------------------------------------------------
+
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (error: unknown) => void;
+}> = [];
+
+function processQueue(error: unknown, token: string | null = null) {
+  failedQueue.forEach(({ resolve, reject }) => {
+    if (error) reject(error);
+    else resolve(token!);
+  });
+  failedQueue = [];
+}
+
+api.interceptors.response.use(
+  (response) => response,
+  async (error: AxiosError) => {
+    const originalRequest = error.config as
+      | (InternalAxiosRequestConfig & { _retry?: boolean })
+      | undefined;
+
+    if (!originalRequest || error.response?.status !== 401) {
+      return Promise.reject(error);
+    }
+
+    const url = originalRequest.url ?? "";
+    if (url.includes("/auth/refresh") || url.includes("/auth/login") || url.includes("/auth/register")) {
+      return Promise.reject(error);
+    }
+
+    if (originalRequest._retry) {
+      return Promise.reject(error);
+    }
+
+    if (isRefreshing) {
+      return new Promise<string>((resolve, reject) => {
+        failedQueue.push({ resolve, reject });
+      }).then((token) => {
+        originalRequest.headers.Authorization = `Bearer ${token}`;
+        return api(originalRequest);
+      });
+    }
+
+    originalRequest._retry = true;
+    isRefreshing = true;
+
+    const refreshTokenValue = localStorage.getItem("refresh_token");
+    if (!refreshTokenValue) {
+      isRefreshing = false;
+      processQueue(error);
+      localStorage.removeItem("access_token");
+      window.dispatchEvent(new CustomEvent(AUTH_FORCE_LOGOUT_EVENT));
+      return Promise.reject(error);
+    }
+
+    try {
+      const { data } = await axios.post<RefreshResponse>(
+        `${BASE_URL}/api/v1/auth/refresh`,
+        { refresh_token: refreshTokenValue },
+      );
+      localStorage.setItem("access_token", data.access_token);
+      originalRequest.headers.Authorization = `Bearer ${data.access_token}`;
+      processQueue(null, data.access_token);
+      return api(originalRequest);
+    } catch (refreshError) {
+      processQueue(refreshError);
+      localStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.dispatchEvent(new CustomEvent(AUTH_FORCE_LOGOUT_EVENT));
+      return Promise.reject(refreshError);
+    } finally {
+      isRefreshing = false;
+    }
+  },
+);
+
+export default api;
 
 // ---------------------------------------------------------------------------
 // Error normalizer — unwraps FastAPI's {detail: string} envelope
@@ -219,7 +329,88 @@ export async function deleteApplication(
 // ---------------------------------------------------------------------------
 
 export function getFileDownloadUrl(fileName: string): string {
-  const base =
-    import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-  return `${base}/api/v1/files/${encodeURIComponent(fileName)}`;
+  return `${BASE_URL}/api/v1/files/${encodeURIComponent(fileName)}`;
+}
+
+// ---------------------------------------------------------------------------
+// §4  Authentication
+// ---------------------------------------------------------------------------
+
+export async function authRegister(data: {
+  full_name: string;
+  email: string;
+  password: string;
+}): Promise<RegisterResponse> {
+  const { data: res } = await api.post<RegisterResponse>(
+    "/api/v1/auth/register",
+    data,
+  );
+  return res;
+}
+
+export async function authLogin(data: {
+  email: string;
+  password: string;
+}): Promise<LoginResponse> {
+  const { data: res } = await api.post<LoginResponse>(
+    "/api/v1/auth/login",
+    data,
+  );
+  return res;
+}
+
+export async function authRefresh(data: {
+  refresh_token: string;
+}): Promise<RefreshResponse> {
+  const { data: res } = await api.post<RefreshResponse>(
+    "/api/v1/auth/refresh",
+    data,
+  );
+  return res;
+}
+
+export async function authMe(): Promise<AuthUser> {
+  const { data } = await api.get<AuthUser>("/api/v1/auth/me");
+  return data;
+}
+
+// ---------------------------------------------------------------------------
+// Admin — crawl sources (REQ-017)
+// ---------------------------------------------------------------------------
+
+export async function adminListCrawlSources(): Promise<CrawlSource[]> {
+  const { data } = await api.get<CrawlSource[]>("/api/v1/admin/crawl-sources");
+  return data;
+}
+
+export async function adminCreateCrawlSource(
+  payload: CrawlSourceCreatePayload,
+): Promise<CrawlSource> {
+  const { data } = await api.post<CrawlSource>(
+    "/api/v1/admin/crawl-sources",
+    payload,
+  );
+  return data;
+}
+
+export async function adminGetCrawlSource(id: string): Promise<CrawlSource> {
+  const { data } = await api.get<CrawlSource>(
+    `/api/v1/admin/crawl-sources/${id}`,
+  );
+  return data;
+}
+
+export async function adminPatchCrawlSource(
+  id: string,
+  payload: CrawlSourceUpdatePayload,
+): Promise<CrawlSource> {
+  const { data } = await api.patch<CrawlSource>(
+    `/api/v1/admin/crawl-sources/${id}`,
+    payload,
+  );
+  return data;
+}
+
+export async function adminDeleteCrawlSource(id: string): Promise<void> {
+  await api.delete(`/api/v1/admin/crawl-sources/${id}`);
 }

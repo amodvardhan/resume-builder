@@ -1,8 +1,8 @@
 # Implementation Progress
 
 **Audited by:** Business Analyst
-**Audit date:** 2026-03-16
-**Verdict:** OPERATIONAL — All core requirements implemented and verified
+**Audit date:** 2026-03-17
+**Verdict:** v3.0 IN PROGRESS — Core requirements operational. New features (Auth, Job Discovery, Dashboard) implemented, pending integration testing.
 
 ---
 
@@ -148,3 +148,102 @@
   > Every `doc.add_paragraph(text)` and `p.add_run(text)` call replaced with `p = doc.add_paragraph(); _add_rich_runs(p, text, ...)` across classic, modern, minimal, executive, creative resume and cover letter builders.
 * [x] Experience blocks, separated entries, sidebar text, and main text all process HTML correctly.
   > `_add_experience_block()`, `_add_separated_entries()`, modern `_sidebar_text()`, modern `_main_text()` all updated to use `_add_rich_runs()`. Added `_strip_html()` utility for empty-line checks on HTML content.
+
+---
+
+## REQ-012: User Authentication
+
+* [x] Users can register with full name, email, and password via `POST /api/v1/auth/register`.
+  > Endpoint in `main.py` creates User with `hash_password()` from `auth_service.py`. Email uniqueness enforced (409 on duplicate).
+* [x] Passwords are hashed using bcrypt before storage; plaintext passwords are never persisted or logged.
+  > `passlib.context.CryptContext(schemes=["bcrypt"])` in `auth_service.py`. `password_hash` column added to users table.
+* [x] Users can log in with email + password via `POST /api/v1/auth/login`, receiving an access token (30-min TTL) and a refresh token (7-day TTL).
+  > Login endpoint validates credentials, returns `TokenResponse` with both tokens + user profile.
+* [x] Access tokens are JWT signed with HS256; payload includes `sub` (user UUID) and `exp`.
+  > `python-jose` JWT encoding with `settings.jwt_secret` and `settings.jwt_algorithm`.
+* [x] A refresh endpoint `POST /api/v1/auth/refresh` issues a new access token given a valid refresh token.
+  > Verifies refresh token type claim, loads user, returns new token pair.
+* [x] `GET /api/v1/auth/me` returns the authenticated user's profile.
+  > Uses `Depends(get_current_user)` to extract user from JWT.
+* [x] All existing endpoints require `Authorization: Bearer <token>`.
+  > Every endpoint (except auth + catalog) uses `current_user: User = Depends(get_current_user)`.
+* [x] Frontend provides Login and Register pages with form validation and error display.
+  > `LoginPage.tsx` and `RegisterPage.tsx` with email/password validation, loading states, error display.
+* [x] Frontend stores tokens in `localStorage`, attaches `Authorization` header to all API calls via an Axios interceptor, and redirects to login on 401.
+  > Request interceptor attaches Bearer token. Response interceptor handles 401 with silent refresh + retry queue.
+* [x] Frontend wraps the app in an `AuthProvider` context exposing `user`, `login()`, `register()`, `logout()`, and `isAuthenticated`.
+  > `AuthContext.tsx` with full bootstrap (validate stored token on mount), auto-login after register, force-logout event listener.
+
+## REQ-013: Job Preferences & Career Profile
+
+* [x] A `job_preferences` table stores per-user preferences.
+  > `JobPreference` ORM model with `industry`, `role_categories` (JSONB), `preferred_locations` (JSONB), `experience_level`, `keywords` (JSONB). Unique on `user_id`.
+* [x] `PUT /api/v1/preferences` creates or fully replaces the user's preferences (upsert semantics).
+  > Endpoint deletes existing + inserts new, or updates in place.
+* [x] `GET /api/v1/preferences` returns the user's current preferences.
+  > Returns empty defaults if no preferences set.
+* [x] `GET /api/v1/preferences/catalog` returns the pre-configured taxonomy.
+  > Returns `INDUSTRY_ROLE_CATALOG` from `job_sources.py` — 8 industries, 5-8 roles each.
+* [x] The catalog is defined in `src/backend/job_sources.py` as a Python constant.
+  > `INDUSTRY_ROLE_CATALOG: dict[str, list[str]]` with IT Software, IT Services, Finance, Healthcare, Manufacturing, Education, Government, Marketing.
+* [x] Frontend provides a "Preferences" page accessible from the header navigation.
+  > `PreferencesPage.tsx` with industry dropdown, multi-select roles, location tags, experience level, keywords.
+
+## REQ-014: Job Crawling & Source Management
+
+* [x] `src/backend/job_sources.py` contains a `JOB_SOURCE_REGISTRY` mapping.
+  > Pre-configured for 6 sources: Indeed, LinkedIn, RemoteOK, Adzuna, Glassdoor, StackOverflow. Industry→role→sources mapping generated from catalog.
+* [x] The `crawled_jobs` table stores full job metadata with deduplication.
+  > `CrawledJob` ORM model with `(source_name, external_id)` unique constraint.
+* [x] The `crawl_runs` table stores audit history.
+  > `CrawlRun` ORM model tracking status, job counts, timestamps, and errors.
+* [x] `src/backend/services/job_crawler.py` implements the crawl pipeline.
+  > `run_crawl_for_user()` → `get_sources_for_preferences()` → `_fetch_and_parse()` → `_deduplicate_and_insert()` → `score_new_matches()`.
+* [x] The crawler uses `httpx.AsyncClient` with configurable timeout, retry, rate limiting.
+  > 30s timeout, 3 retries with exponential backoff (2s/4s/8s), per-source rate limiting.
+* [x] `src/backend/services/scheduler.py` uses APScheduler's `AsyncIOScheduler`.
+  > Cron job configurable via `APP_CRAWL_CRON` (default: `0 6 * * *`). Starts on FastAPI startup, stops on shutdown.
+* [x] `POST /api/v1/jobs/crawl` triggers an immediate crawl.
+  > Uses `BackgroundTasks` for async execution, returns 202 immediately.
+* [x] `GET /api/v1/jobs/crawl/status` returns the most recent crawl run.
+  > Returns latest `CrawlRun` for the user.
+* [x] `GET /api/v1/jobs` lists crawled jobs with pagination.
+  > Filtered by user's preferences (industry + role_categories), paginated.
+
+## REQ-015: AI-Powered Job Matching
+
+* [x] The `job_matches` table stores scores with user-job deduplication.
+  > `JobMatch` ORM model with `(user_id, job_id)` unique constraint. Scores: overall, skill, experience, role_fit.
+* [x] `src/backend/services/job_matcher.py` implements `score_single_match()` using LangChain.
+  > `ChatPromptTemplate | ChatOpenAI(temp=0.3) | PydanticOutputParser(JobMatchScore)`. Detailed scoring prompt with dimension weights.
+* [x] Batch scoring after each crawl with concurrency control.
+  > `score_new_matches()` uses `asyncio.Semaphore(5)` + `asyncio.gather()`. ON CONFLICT DO NOTHING for race safety.
+* [x] Dashboard match endpoints: list, detail, status update, apply bridge.
+  > `GET /api/v1/dashboard/matches` (paginated, filterable), `GET .../matches/{id}` (detail), `PATCH .../matches/{id}` (status), `POST .../matches/{id}/apply` (bridges to tailor flow).
+* [x] `GET /api/v1/dashboard/stats` returns aggregate statistics.
+  > Total matches, average score, new today, saved count, score tier breakdown.
+
+## REQ-016: Job Dashboard
+
+* [x] Frontend adds a "Dashboard" page as the default landing page.
+  > `Dashboard.tsx` with stat cards, filter bar, job match grid, pagination, empty state.
+* [x] Header navigation includes: Dashboard, Compose, History, Preferences, Profile.
+  > `Header.tsx` updated with 5 nav items + logout button.
+* [x] Dashboard displays summary stat cards.
+  > Total matches, average score, new today, saved — color-coded.
+* [x] Job match cards with score visualization and quick actions.
+  > `JobMatchCard.tsx` with color-coded score badges, strength chips, save/dismiss/apply buttons.
+* [x] Match breakdown panel with score bars and recommendation.
+  > `MatchBreakdown.tsx` with skill/experience/role-fit progress bars, strengths/gaps chips, recommendation text.
+* [x] Filtering and pagination support.
+  > Status filter (all/new/saved/applied/dismissed), score range, prev/next pagination.
+* [x] Empty state with preference setup prompt.
+  > Friendly message with buttons to set preferences and trigger crawl.
+
+## REQ-017: Admin-Managed Job Crawl Sources
+
+* [x] `users.is_admin` + `APP_ADMIN_EMAILS` bootstrap; `auth/me`, login, register expose `is_admin`.
+* [x] `job_crawl_sources` table + startup seed mirroring legacy industry-scoped sources.
+* [x] Crawler uses `resolve_crawl_source_pairs` (DB when table non-empty; else code fallback).
+* [x] Admin CRUD `/api/v1/admin/crawl-sources` + `get_current_admin` (403 non-admins).
+* [x] Frontend **Crawl admin** nav + `AdminCrawlSourcesPage` (in-app page, admins only).

@@ -16,6 +16,7 @@ export interface UserProfile {
   full_name: string;
   email: string;
   core_skills: string[];
+  is_admin?: boolean;
 }
 
 export interface UserCreatePayload {
@@ -194,6 +195,158 @@ export interface Application {
   cover_letter_text: string | null;
   reference_application_id: string | null;
   created_at: string;
+}
+
+// ---------------------------------------------------------------------------
+// §3.5  Job Dashboard & Match Scoring
+// ---------------------------------------------------------------------------
+
+export interface DashboardStats {
+  total_matches: number;
+  average_score: number;
+  new_today: number;
+  saved_count: number;
+  tier_90_plus: number;
+  tier_70_89: number;
+  tier_50_69: number;
+  tier_below_50: number;
+}
+
+export interface JobSummary {
+  id: string;
+  title: string;
+  organization: string;
+  location: string | null;
+  url: string | null;
+  source_name: string;
+  posted_at: string | null;
+}
+
+export interface MatchListItem {
+  id: string;
+  job: JobSummary;
+  overall_score: number;
+  skill_match_score: number;
+  experience_match_score: number;
+  role_fit_score: number;
+  strengths: string[];
+  status: string;
+  created_at: string;
+}
+
+export interface PaginatedMatches {
+  items: MatchListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+}
+
+export interface MatchDetail extends MatchListItem {
+  job: JobSummary & { description_text: string };
+  match_details: {
+    strengths: string[];
+    gaps: string[];
+    recommendation: string;
+  };
+}
+
+export interface CrawlStatus {
+  id: string;
+  status: string;
+  jobs_found: number;
+  jobs_new: number;
+  started_at: string;
+  finished_at: string | null;
+  error_message: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// §3.6  Job Preferences
+// ---------------------------------------------------------------------------
+
+export interface JobPreferences {
+  industry: string | null;
+  role_categories: string[];
+  preferred_locations: string[];
+  experience_level: string | null;
+  keywords: string[];
+}
+
+// ---------------------------------------------------------------------------
+// §4  Authentication
+// ---------------------------------------------------------------------------
+
+export interface AuthUser {
+  id: string;
+  full_name: string;
+  email: string;
+  core_skills: string[];
+  is_admin?: boolean;
+}
+
+export interface LoginResponse {
+  access_token: string;
+  refresh_token: string;
+  token_type: string;
+  user: AuthUser;
+}
+
+export interface RegisterResponse {
+  id: string;
+  full_name: string;
+  email: string;
+  core_skills: string[];
+  is_admin?: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// REQ-017 Admin crawl sources
+// ---------------------------------------------------------------------------
+
+export interface CrawlSource {
+  id: string;
+  source_key: string;
+  display_name: string;
+  source_type: "api" | "html_scraper" | "rss";
+  url_template: string;
+  headers: Record<string, string>;
+  rate_limit_seconds: number;
+  selectors: Record<string, string>;
+  industries: string[];
+  enabled: boolean;
+  sort_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrawlSourceCreatePayload {
+  source_key: string;
+  display_name: string;
+  source_type: "api" | "html_scraper" | "rss";
+  url_template: string;
+  headers?: Record<string, string>;
+  rate_limit_seconds?: number;
+  selectors?: Record<string, string>;
+  industries?: string[];
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+export interface CrawlSourceUpdatePayload {
+  display_name?: string;
+  source_type?: "api" | "html_scraper" | "rss";
+  url_template?: string;
+  headers?: Record<string, string>;
+  rate_limit_seconds?: number;
+  selectors?: Record<string, string>;
+  industries?: string[];
+  enabled?: boolean;
+  sort_order?: number;
+}
+
+export interface RefreshResponse {
+  access_token: string;
+  token_type: string;
 }
 
 // ---------------------------------------------------------------------------

@@ -90,3 +90,90 @@
   * [ ] Unknown/unsupported HTML tags are silently stripped from the output.
   * [ ] All five resume template builders and all five cover letter builders use `_add_rich_runs()` for content paragraphs.
   * [ ] Experience blocks, separated entries, sidebar text, and main text all process HTML correctly.
+
+---
+
+## REQ-012: User Authentication
+* **Description:** The system must support user registration and login with secure JWT-based authentication. All API endpoints (except auth endpoints) must require a valid access token. The frontend must persist tokens, handle expiry transparently, and gate all routes behind login.
+* **Acceptance Criteria:**
+  * [ ] Users can register with full name, email, and password via `POST /api/v1/auth/register`.
+  * [ ] Passwords are hashed using bcrypt before storage; plaintext passwords are never persisted or logged.
+  * [ ] Users can log in with email + password via `POST /api/v1/auth/login`, receiving an access token (30-min TTL) and a refresh token (7-day TTL).
+  * [ ] Access tokens are JWT signed with HS256; payload includes `sub` (user UUID) and `exp`.
+  * [ ] A refresh endpoint `POST /api/v1/auth/refresh` issues a new access token given a valid refresh token.
+  * [ ] `GET /api/v1/auth/me` returns the authenticated user's profile.
+  * [ ] All existing endpoints (users, templates, resumes, applications, files) require `Authorization: Bearer <token>` and extract `user_id` from the token — no more accepting `user_id` in request bodies for identity.
+  * [ ] Frontend provides Login and Register pages with form validation and error display.
+  * [ ] Frontend stores tokens in `localStorage`, attaches `Authorization` header to all API calls via an Axios interceptor, and redirects to login on 401.
+  * [ ] Frontend wraps the app in an `AuthProvider` context exposing `user`, `login()`, `register()`, `logout()`, and `isAuthenticated`.
+
+## REQ-013: Job Preferences & Career Profile
+* **Description:** Each user can configure structured job preferences that define which industries, roles, locations, and experience levels they target. These preferences drive the job crawler's search filters and the match engine's scoring. The system provides a pre-built catalog of industries and role categories.
+* **Acceptance Criteria:**
+  * [ ] A `job_preferences` table stores per-user preferences: `industry`, `role_categories` (JSONB array), `preferred_locations` (JSONB array), `experience_level`, and `keywords` (JSONB array).
+  * [ ] `PUT /api/v1/preferences` creates or fully replaces the user's preferences (upsert semantics).
+  * [ ] `GET /api/v1/preferences` returns the user's current preferences (or empty defaults).
+  * [ ] `GET /api/v1/preferences/catalog` returns the pre-configured taxonomy: a map of industries to arrays of role categories (e.g., `{ "IT Software": ["Engineering Manager", "Technical Architect", ...], "Finance": [...] }`).
+  * [ ] The catalog is defined in `src/backend/job_sources.py` as a Python constant — not stored in the DB.
+  * [ ] Frontend provides a "Preferences" page accessible from the header navigation, with dropdowns/multi-selects for industry, roles, locations, and experience level.
+  * [ ] Changing preferences triggers an on-demand crawl for the new criteria (debounced, not on every keystroke).
+
+## REQ-014: Job Crawling & Source Management
+* **Description:** The system maintains a registry of pre-configured job source URLs mapped to industries and roles. A background scheduler crawls these sources at a configurable interval (default: daily at 06:00 UTC). Users can also trigger a manual crawl. Crawled jobs are deduplicated and stored with full metadata.
+* **Acceptance Criteria:**
+  * [ ] `src/backend/job_sources.py` contains a `JOB_SOURCE_REGISTRY` mapping: `{ industry → { role → [source_config] } }` where each `source_config` defines `name`, `source_type` (api | html_scraper | rss), `url_template`, and extraction rules.
+  * [ ] The `crawled_jobs` table stores: `id`, `source_name`, `external_id`, `title`, `organization`, `location`, `description_html`, `description_text`, `url`, `salary_range`, `posted_at`, `scraped_at`, `industry`, `role_category`, `raw_data` (JSONB).
+  * [ ] The `crawl_runs` table stores audit history: `id`, `user_id`, `status` (running/completed/failed), `jobs_found`, `jobs_new`, `started_at`, `finished_at`, `error_message`.
+  * [ ] `src/backend/services/job_crawler.py` implements the crawl pipeline: build URLs from preferences → fetch → parse → deduplicate via `(source_name, external_id)` unique constraint → store.
+  * [ ] The crawler uses `httpx.AsyncClient` with configurable timeout, retry (3 attempts with exponential backoff), rate limiting (2s between requests to same source), and proper User-Agent headers.
+  * [ ] `src/backend/services/scheduler.py` uses APScheduler's `AsyncIOScheduler` to run the crawl job. Schedule is configurable via `APP_CRAWL_CRON` env var (default: `0 6 * * *`).
+  * [ ] `POST /api/v1/jobs/crawl` triggers an immediate crawl for the authenticated user's preferences.
+  * [ ] `GET /api/v1/jobs/crawl/status` returns the most recent `crawl_run` for the user.
+  * [ ] `GET /api/v1/jobs` lists crawled jobs filtered by the user's preferences (industry + role_categories), with pagination (`?page=1&per_page=20`).
+  * [ ] The scheduler starts on application startup and shuts down gracefully.
+
+## REQ-015: AI-Powered Job Matching
+* **Description:** When new jobs are crawled (or on demand), the system uses LangChain to compare each job against the user's latest resume and core skills, producing a structured match score. This follows the same LangChain orchestration pattern as the tailoring engine: `ChatPromptTemplate` → `ChatOpenAI` → `PydanticOutputParser`.
+* **Acceptance Criteria:**
+  * [ ] The `job_matches` table stores: `id`, `user_id`, `job_id` (FK → crawled_jobs), `overall_score` (0–100 float), `skill_match_score`, `experience_match_score`, `role_fit_score`, `match_details` (JSONB: strengths, gaps, recommendation), `status` (new/viewed/saved/applied/dismissed), `created_at`.
+  * [ ] `src/backend/services/job_matcher.py` implements `score_job_match()` using LangChain: prompt includes resume text + core_skills + job description; output is a Pydantic model with numeric scores and text analysis.
+  * [ ] Batch scoring: after each crawl, all new (unscored) jobs for the user are scored. Uses `asyncio.gather` with concurrency limit (5 parallel LLM calls) to avoid rate-limit issues.
+  * [ ] `GET /api/v1/dashboard/matches` returns matches sorted by `overall_score` desc, with filtering by `status`, `min_score`, and pagination.
+  * [ ] `GET /api/v1/dashboard/matches/{match_id}` returns the full match detail including `match_details` breakdown.
+  * [ ] `PATCH /api/v1/dashboard/matches/{match_id}` updates the match status (viewed, saved, applied, dismissed).
+  * [ ] `POST /api/v1/dashboard/matches/{match_id}/apply` — convenience endpoint that pre-fills a tailor preview using the matched job's description, title, and organization (bridges to the existing tailoring flow from REQ-007).
+  * [ ] `GET /api/v1/dashboard/stats` returns aggregate dashboard statistics: total matches, average score, matches by score tier (90+, 70–89, 50–69, below 50), new today, saved count.
+
+## REQ-016: Job Dashboard
+* **Description:** A dedicated dashboard page shows the user their matched jobs ranked by AI-computed relevance. Each card displays the job title, company, match score (with color coding), and key strengths/gaps. The user can drill into full match analysis, save/dismiss jobs, or start a tailored application directly from a match.
+* **Acceptance Criteria:**
+  * [ ] Frontend adds a "Dashboard" page as the default landing page for authenticated users.
+  * [ ] Header navigation includes: Dashboard, Compose, History, Profile — with Dashboard highlighted by default.
+  * [ ] Dashboard displays summary stat cards at the top: total matches, average score, new today, saved.
+  * [ ] Below stats, a grid of `JobMatchCard` components sorted by score, each showing: job title, organization, location, match score (color-coded: green >=80, amber 60-79, red <60), top 3 strengths as chips, posted date.
+  * [ ] Clicking a card expands a `MatchBreakdown` panel showing: radial/bar indicators for skill match, experience match, role fit; full strengths list; gaps/missing skills; AI recommendation text.
+  * [ ] Each card has quick-action buttons: Save, Dismiss, Apply (starts tailor flow with pre-filled JD).
+  * [ ] Dashboard supports filtering: score range slider, status filter (all/new/saved), date range.
+  * [ ] Dashboard supports pagination (20 per page).
+  * [ ] Empty state: when no matches exist, show a prompt to set up preferences and trigger a crawl.
+  * [ ] The dashboard design follows the existing Meridian design language: off-white background, rounded cards with subtle borders, brand accent colors, clean typography.
+
+---
+
+## REQ-017: Admin-Managed Job Crawl Sources
+* **Description:** Platform operators (Admins) must be able to configure which job boards and feeds the application crawls — including URL templates, source type (API / HTML scraper / RSS), rate limits, and HTML extraction selectors — without code deploys. Regular users continue to use Preferences (REQ-013) only to supply search parameters (`{role}`, `{location}`, `{keywords}`); Admins define **where** those parameters are sent. The crawler must use DB-backed definitions as the source of truth once this requirement is implemented; a one-time data migration seeds rows equivalent to today’s `job_sources.py` defaults so behavior is preserved until Admins change them.
+* **Acceptance Criteria:**
+  * [ ] **`users.is_admin`:** Add a boolean column `is_admin` (default `false`) on `users`. Admin-only APIs authorize via `Depends(get_current_user)` plus `is_admin == True`. Document how to promote users (e.g. one-time SQL update or optional env `APP_ADMIN_EMAILS` comma-separated list checked at login to set `is_admin` on matching accounts — product chooses one documented bootstrap path).
+  * [ ] **`job_crawl_sources` table** stores: `id` (UUID PK), `source_key` (unique slug, e.g. `indeed`, used as `source_name` on ingested jobs), `display_name`, `source_type` (`api` | `html_scraper` | `rss`), `url_template` (must support placeholders `{role}`, `{location}`, `{keywords}`), `headers` (JSONB, default `{}`), `rate_limit_seconds` (float), `selectors` (JSONB, for `html_scraper`; empty for api/rss), `industries` (JSONB array of industry names from the preferences catalog; **empty array means the source applies to all industries**), `enabled` (boolean), `sort_order` (int), `created_at`, `updated_at`.
+  * [ ] **Seed migration:** Insert seed rows that reproduce the effective crawl coverage of the current `JOB_SOURCE_REGISTRY` / `SourceConfig` set (same boards and industry applicability as shipped in `job_sources.py` at time of implementation).
+  * [ ] **Crawler integration:** `job_crawler` (and `get_sources_for_preferences` or successor) loads **enabled** `job_crawl_sources` rows applicable to the user’s `industry`, builds resolved URLs from user preferences (roles × locations × sources), and runs the existing fetch/parse/dedup pipeline. Parsing dispatches by `source_type` and `source_key` (or shared extractor registry). Disabled sources are skipped.
+  * [ ] **Admin REST API** (all require admin JWT):
+    * `GET /api/v1/admin/crawl-sources` — list all sources (include disabled), ordered by `sort_order` then `display_name`.
+    * `POST /api/v1/admin/crawl-sources` — create a source (validate `source_type`, URL template placeholders, unique `source_key`).
+    * `GET /api/v1/admin/crawl-sources/{id}` — detail.
+    * `PATCH /api/v1/admin/crawl-sources/{id}` — partial update (toggle `enabled`, edit template, selectors, industries, rate limit, etc.).
+    * `DELETE /api/v1/admin/crawl-sources/{id}` — hard delete **or** soft-delete via `enabled=false` only; document choice in architecture (prefer soft-disable for audit safety).
+  * [ ] **Non-admin users:** Must receive `403 Forbidden` on all `/api/v1/admin/*` routes. No leakage of crawl configuration to non-admin clients except what is already implied by public job results.
+  * [ ] **Frontend — Admin Crawl Sources page:** Route e.g. `/admin/crawl-sources`, visible in header/nav **only** when `user.is_admin` is true. Table or card list of sources with columns: name, type, enabled, industries summary, rate limit. Actions: Add source, Edit (modal or dedicated form), Enable/Disable. Form fields map 1:1 to API (url template, selectors as JSON textarea or structured fields per type, industry multi-select from existing catalog API).
+  * [ ] **Auth/me:** `GET /api/v1/auth/me` (or equivalent profile payload used by the app) includes `is_admin` so the frontend can show/hide Admin navigation.
+  * [ ] **Architecture & DBA:** Update `.context/architecture-global.md` and `.context/db-schema.sql` (or migrations) with the new model and endpoint contracts. **REQ-014** static registry in `job_sources.py` may remain for **industry/role catalog only** (`INDUSTRY_ROLE_CATALOG`); crawl **execution** for users is driven by `job_crawl_sources` after REQ-017 is done (remove or deprecate duplicate crawl registry in code once DB is authoritative).

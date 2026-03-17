@@ -1,7 +1,10 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import (
+    Boolean, DateTime, Float, ForeignKey, Index, Integer, String, Text,
+    UniqueConstraint, Uuid,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -16,8 +19,12 @@ class User(Base):
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    password_hash: Mapped[str | None] = mapped_column(String(255), nullable=True)
     core_skills: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default="[]"
+    )
+    is_admin: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
@@ -126,4 +133,209 @@ class Application(Base):
         Index("idx_applications_resume_id", "resume_id"),
         Index("idx_applications_template_id", "template_id"),
         Index("idx_applications_reference_id", "reference_application_id"),
+    )
+
+
+class JobPreference(Base):
+    __tablename__ = "job_preferences"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role_categories: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    preferred_locations: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    experience_level: Mapped[str | None] = mapped_column(
+        String(100), nullable=True
+    )
+    keywords: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("idx_job_preferences_user_id", "user_id"),
+    )
+
+
+class JobCrawlSource(Base):
+    """Admin-configured job board / feed (REQ-017)."""
+
+    __tablename__ = "job_crawl_sources"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    source_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
+    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    url_template: Mapped[str] = mapped_column(Text, nullable=False)
+    headers: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    rate_limit_seconds: Mapped[float] = mapped_column(
+        Float, nullable=False, server_default="2"
+    )
+    selectors: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    industries: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="[]"
+    )
+    enabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("idx_job_crawl_sources_enabled", "enabled"),
+    )
+
+
+class CrawledJob(Base):
+    __tablename__ = "crawled_jobs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    source_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(1024), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    organization: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    description_html: Mapped[str | None] = mapped_column(Text, nullable=True)
+    description_text: Mapped[str] = mapped_column(Text, nullable=False)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    salary_range: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    scraped_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    industry: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    role_category: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    raw_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("source_name", "external_id", name="uq_crawled_jobs_source_external"),
+        Index("idx_crawled_jobs_industry_role", "industry", "role_category"),
+        Index("idx_crawled_jobs_scraped_at", "scraped_at"),
+    )
+
+
+class CrawlRun(Base):
+    __tablename__ = "crawl_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="running"
+    )
+    jobs_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    jobs_new: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    started_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    finished_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        Index("idx_crawl_runs_user_id", "user_id"),
+        Index("idx_crawl_runs_started_at", "user_id", "started_at"),
+    )
+
+
+class JobMatch(Base):
+    __tablename__ = "job_matches"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    job_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid,
+        ForeignKey("crawled_jobs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    overall_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    skill_match_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    experience_match_score: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0
+    )
+    role_fit_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    match_details: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default="{}"
+    )
+    status: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="new"
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("user_id", "job_id", name="uq_job_matches_user_job"),
+        Index("idx_job_matches_user_id", "user_id"),
+        Index("idx_job_matches_score", "user_id", "overall_score"),
+        Index("idx_job_matches_status", "user_id", "status"),
     )
