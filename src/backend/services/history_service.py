@@ -57,9 +57,13 @@ async def clone_application(
     if source is None:
         raise LookupError(f"Application {source_application_id} not found")
 
-    template = await session.get(Template, source.template_id)
-    if template is None:
-        raise LookupError(f"Template {source.template_id} not found")
+    template_path: Path | None = None
+    if source.template_id is not None:
+        template = await session.get(Template, source.template_id)
+        if template is not None:
+            tp = Path(template.file_path)
+            if tp.exists():
+                template_path = tp
 
     user = await session.get(User, source.user_id)
     if user is None:
@@ -82,7 +86,7 @@ async def clone_application(
         organization=new_organization,
         job_description=jd_plain_text,
         cover_letter_sentiment=source.cover_letter_sentiment,
-        template_path=Path(template.file_path),
+        template_path=template_path,
         history_context=history_context,
     )
 

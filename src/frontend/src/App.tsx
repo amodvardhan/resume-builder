@@ -72,6 +72,7 @@ export default function App() {
         user_id: USER_ID,
         resume_id: resumeId,
         template_id: templateId ?? undefined,
+        template_style: templateStyle,
         job_title: jobTitle,
         organization,
         job_description_html: jobDescriptionHtml,
@@ -84,7 +85,7 @@ export default function App() {
         },
       },
     );
-  }, [resumeId, templateId, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation]);
+  }, [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation]);
 
   const handleConfirm = useCallback(
     (edited: TailorPreviewResponse) => {
@@ -95,6 +96,7 @@ export default function App() {
           user_id: USER_ID,
           resume_id: resumeId,
           template_id: templateId ?? undefined,
+          template_style: templateStyle,
           job_title: jobTitle,
           organization,
           job_description_html: jobDescriptionHtml,
@@ -109,7 +111,7 @@ export default function App() {
         },
       );
     },
-    [resumeId, templateId, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation],
+    [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -119,6 +121,7 @@ export default function App() {
         user_id: USER_ID,
         resume_id: resumeId,
         template_id: templateId ?? undefined,
+        template_style: templateStyle,
         job_title: jobTitle,
         organization,
         job_description_html: jobDescriptionHtml,
@@ -130,10 +133,10 @@ export default function App() {
         },
       },
     );
-  }, [resumeId, templateId, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation]);
+  }, [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation]);
 
   const handleRegenerateSection = useCallback(
-    (sectionId: string, currentContent: string): Promise<string> => {
+    (sectionId: string, currentContent: string, userInstruction?: string): Promise<string> => {
       if (!resumeId) return Promise.reject(new Error("No resume"));
       return new Promise((resolve, reject) => {
         sectionRegenMutation.mutate(
@@ -146,6 +149,7 @@ export default function App() {
             organization,
             job_description_html: jobDescriptionHtml,
             cover_letter_sentiment: sentiment,
+            user_instruction: userInstruction,
           },
           {
             onSuccess: (data) => resolve(data.content),
@@ -169,6 +173,21 @@ export default function App() {
     setOrganization("");
     setJobDescriptionHtml("");
   }, []);
+
+  const handleNavigate = useCallback(
+    (page: PageView) => {
+      if (page === "compose" && currentPage !== "compose") {
+        setComposePhase("input");
+        setDraft(null);
+        setResult(null);
+        setJobTitle("");
+        setOrganization("");
+        setJobDescriptionHtml("");
+      }
+      setCurrentPage(page);
+    },
+    [currentPage],
+  );
 
   const handleActivateBaseline = useCallback((applicationId: string) => {
     refEngine.selectReference(applicationId);
@@ -221,7 +240,7 @@ export default function App() {
     <div className="flex min-h-screen flex-col bg-background">
       <Header
         currentPage={currentPage}
-        onNavigate={setCurrentPage}
+        onNavigate={handleNavigate}
         user={userProfile.data}
         isLoading={userProfile.isLoading}
       />
@@ -513,54 +532,137 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Styled preview of final documents */}
+              {/* Styled preview of final documents — mirrors DraftReview template layout */}
               {draft ? (
                 <>
-                  {/* Resume page — styled with selected template */}
+                  {/* Resume page */}
                   <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
-                    <div className="px-12 py-10 sm:px-16 sm:py-12">
-                      {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
-                        <div className="tpl-header">
-                          <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
-                            Tailored Resume
-                          </div>
+                    {templateStyle === "modern" ? (
+                      <div className="tpl-grid">
+                        <div className="tpl-sidebar space-y-5">
+                          {draft.skills && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Skills</h3>
+                              <div className="skill-pills">
+                                {draft.skills.split(",").map((s, i) => {
+                                  const trimmed = s.trim();
+                                  return trimmed ? <span key={i} className="skill-pill">{trimmed}</span> : null;
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {draft.education && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Education</h3>
+                              <div className="edu-entries">
+                                {draft.education.split(/[;\n]/).filter((l: string) => l.trim()).map((entry: string, i: number) => (
+                                  <div key={i} className="edu-entry">
+                                    <p className="text-sm leading-relaxed text-primary/85">{entry.trim()}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {draft.certifications && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Certifications</h3>
+                              <div className="cert-entries">
+                                {draft.certifications.split(/[;\n]/).filter((l: string) => l.trim()).map((entry: string, i: number) => (
+                                  <div key={i} className="cert-entry">
+                                    <svg className="cert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                      <path d="M9 12l2 2 4-4" />
+                                    </svg>
+                                    <span className="text-sm leading-relaxed text-primary/85">{entry.trim()}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
-                      )}
-                      <div className="space-y-5">
-                        {draft.summary && (
-                          <div>
-                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Professional Summary</h3>
-                            <p className="text-sm leading-relaxed text-primary/85">{draft.summary}</p>
-                          </div>
-                        )}
-                        {draft.experiences?.length > 0 && draft.experiences.map((exp, i) => (
-                          <div key={i}>
-                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">
-                              Experience {draft.experiences.length > 1 ? i + 1 : ""}
-                            </h3>
-                            <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">{exp}</div>
-                          </div>
-                        ))}
-                        {draft.skills && (
-                          <div>
-                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Skills</h3>
-                            <p className="text-sm leading-relaxed text-primary/85">{draft.skills}</p>
-                          </div>
-                        )}
-                        {draft.education && (
-                          <div>
-                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Education</h3>
-                            <p className="text-sm leading-relaxed text-primary/85">{draft.education}</p>
-                          </div>
-                        )}
-                        {draft.certifications && (
-                          <div>
-                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Certifications</h3>
-                            <p className="text-sm leading-relaxed text-primary/85">{draft.certifications}</p>
-                          </div>
-                        )}
+                        <div className="tpl-main space-y-5">
+                          {draft.summary && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Professional Summary</h3>
+                              <p className="text-sm leading-relaxed text-primary/85">{draft.summary}</p>
+                            </div>
+                          )}
+                          {draft.experiences?.length > 0 && draft.experiences.map((exp, i) => (
+                            <div key={i}>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">
+                                Experience {draft.experiences.length > 1 ? i + 1 : ""}
+                              </h3>
+                              <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">{exp}</div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      <div className="px-12 py-10 sm:px-16 sm:py-12">
+                        {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
+                          <div className="tpl-header">
+                            <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
+                              Tailored Resume
+                            </div>
+                          </div>
+                        )}
+                        <div className="space-y-5">
+                          {draft.summary && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Professional Summary</h3>
+                              <p className="text-sm leading-relaxed text-primary/85">{draft.summary}</p>
+                            </div>
+                          )}
+                          {draft.experiences?.length > 0 && draft.experiences.map((exp, i) => (
+                            <div key={i}>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">
+                                Experience {draft.experiences.length > 1 ? i + 1 : ""}
+                              </h3>
+                              <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">{exp}</div>
+                            </div>
+                          ))}
+                          {draft.skills && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Skills</h3>
+                              <div className="skill-pills">
+                                {draft.skills.split(",").map((s: string, i: number) => {
+                                  const trimmed = s.trim();
+                                  return trimmed ? <span key={i} className="skill-pill">{trimmed}</span> : null;
+                                })}
+                              </div>
+                            </div>
+                          )}
+                          {draft.education && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Education</h3>
+                              <div className="edu-entries">
+                                {draft.education.split(/[;\n]/).filter((l: string) => l.trim()).map((entry: string, i: number) => (
+                                  <div key={i} className="edu-entry">
+                                    <p className="text-sm leading-relaxed text-primary/85">{entry.trim()}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {draft.certifications && (
+                            <div>
+                              <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Certifications</h3>
+                              <div className="cert-entries">
+                                {draft.certifications.split(/[;\n]/).filter((l: string) => l.trim()).map((entry: string, i: number) => (
+                                  <div key={i} className="cert-entry">
+                                    <svg className="cert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                                      <path d="M9 12l2 2 4-4" />
+                                    </svg>
+                                    <span className="text-sm leading-relaxed text-primary/85">{entry.trim()}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
 
                   {/* Page break indicator */}
@@ -585,11 +687,9 @@ export default function App() {
               ) : (
                 /* Fallback: no draft available (clone flow) — plain card */
                 result.cover_letter_text && (
-                  <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-                    <div className="p-6 sm:p-8">
-                      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-secondary">
-                        Cover Letter
-                      </h4>
+                  <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                    <div className="px-12 py-10 sm:px-16 sm:py-12">
+                      <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-4">Cover Letter</h3>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-primary/80">
                         {result.cover_letter_text}
                       </p>

@@ -128,6 +128,91 @@ body {
   text-underline-offset: 2px;
 }
 
+/* Experience role header (h3 inside editor) — bold separator line */
+.doc-section .ProseMirror h3 {
+  font-size: 0.875rem;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  padding-bottom: 0.375rem;
+  border-bottom: 1px solid var(--color-border-muted);
+  color: var(--color-primary);
+}
+
+/* Polished bullet lists inside editor */
+.doc-section .ProseMirror ul {
+  list-style: none;
+  padding-left: 0;
+  margin: 0.25rem 0 0.5rem;
+}
+
+.doc-section .ProseMirror ul li {
+  position: relative;
+  padding-left: 1.125rem;
+  margin-bottom: 0.25rem;
+  line-height: 1.65;
+}
+
+.doc-section .ProseMirror ul li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background-color: var(--color-brand);
+  opacity: 0.5;
+}
+
+/* Skills section: tag-cloud style with better readability */
+[data-section="skills"] .ProseMirror p {
+  line-height: 2;
+  word-spacing: 0.05em;
+  letter-spacing: 0.01em;
+}
+
+/* Education section: slightly larger line-height for stacked entries */
+[data-section="education"] .ProseMirror p {
+  line-height: 1.85;
+}
+
+/* ── Formatted section preview (WYSIWYG) — click to edit ── */
+.formatted-preview {
+  cursor: pointer;
+  border-radius: 0.25rem;
+  padding: 0.375rem 0.5rem;
+  margin: -0.375rem -0.5rem;
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
+}
+.formatted-preview:hover {
+  background-color: rgba(37, 99, 235, 0.02);
+}
+.formatted-preview-hint {
+  position: absolute;
+  top: 0.25rem;
+  right: 0.25rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  background-color: var(--color-surface, #fff);
+  border: 1px solid var(--color-border-muted, #e5e7eb);
+  font-size: 0.5625rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-secondary, #64748b);
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.formatted-preview:hover .formatted-preview-hint {
+  opacity: 1;
+}
+
 /* ═══════════════════════════════════════════════════════════════════════
    Template-aware document preview styles
    ═══════════════════════════════════════════════════════════════════════ */
@@ -151,16 +236,26 @@ body {
 }
 
 /* ── Modern Two-Column ── */
+.tpl-modern.doc-page {
+  padding: 0;
+  overflow: hidden;
+}
 .tpl-modern .tpl-grid {
   display: grid;
-  grid-template-columns: 210px 1fr;
-  gap: 1.5rem;
+  grid-template-columns: 30% 70%;
+  gap: 0;
+  min-height: 100%;
 }
 .tpl-modern .tpl-sidebar {
-  background-color: #f8fafc;
-  border-radius: 0.5rem;
-  padding: 1rem;
+  background-color: #f0f4f8;
+  border-radius: 0;
+  padding: 2rem 1rem 2rem 1.25rem;
+  margin: 0;
   border-right: 2px solid var(--color-brand);
+  min-height: 100%;
+}
+.tpl-modern .tpl-main {
+  padding: 2rem 2rem 2rem 1.5rem;
 }
 .tpl-modern .tpl-section-heading {
   font-size: 0.625rem;
@@ -169,6 +264,82 @@ body {
   text-transform: uppercase;
   color: var(--color-brand);
   margin-bottom: 0.375rem;
+}
+
+/* ── Skill pills ── */
+.skill-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem;
+}
+.skill-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1875rem 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 9999px;
+  background-color: var(--color-brand-light, rgba(37, 99, 235, 0.08));
+  color: var(--color-brand, #2563eb);
+  white-space: nowrap;
+}
+.tpl-modern .skill-pill {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.5rem;
+  background-color: rgba(51, 107, 135, 0.1);
+  color: #336b87;
+}
+.tpl-executive .skill-pill {
+  border-radius: 0.25rem;
+  background-color: rgba(30, 41, 59, 0.06);
+  color: var(--color-primary);
+}
+.tpl-creative .skill-pill {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.08), rgba(37, 99, 235, 0.08));
+  color: #6d28d9;
+}
+
+/* ── Education entries ── */
+.edu-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.edu-entry {
+  padding: 0.375rem 0;
+}
+.edu-entry + .edu-entry {
+  border-top: 1px solid var(--color-border-muted, rgba(0, 0, 0, 0.08));
+}
+.tpl-modern .edu-entry + .edu-entry {
+  border-top-color: rgba(51, 107, 135, 0.15);
+}
+
+/* ── Certification entries ── */
+.cert-entries {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.cert-entry {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.375rem;
+}
+.cert-icon {
+  flex-shrink: 0;
+  width: 0.875rem;
+  height: 0.875rem;
+  margin-top: 0.125rem;
+  color: var(--color-brand, #2563eb);
+  opacity: 0.7;
+}
+.tpl-modern .cert-icon {
+  color: #336b87;
+}
+.tpl-creative .cert-icon {
+  color: #6d28d9;
 }
 
 /* ── Minimal ATS-Friendly ── */

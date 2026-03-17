@@ -339,22 +339,82 @@ def inject_into_template(template_path: Path, replacements: dict[str, str]) -> s
 # From-scratch document builders (when no user template is uploaded)
 # ---------------------------------------------------------------------------
 
-def _add_heading(doc: Any, text: str, level: int = 2) -> None:
+def _add_heading(doc: Any, text: str, level: int = 2, color: tuple[int, int, int] = (0x1E, 0x29, 0x3B), size: float | None = None) -> Any:
     from docx.shared import Pt, RGBColor
     heading = doc.add_heading(text, level=level)
+    default_size = 12 if level == 2 else 11
     for run in heading.runs:
-        run.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
-        run.font.size = Pt(12 if level == 2 else 11)
+        run.font.color.rgb = RGBColor(*color)
+        run.font.size = Pt(size or default_size)
+    return heading
 
 
-def build_resume_docx(content: dict[str, Any]) -> str:
-    """Build a polished resume docx from scratch — no template required."""
+def _add_horizontal_rule(doc: Any) -> None:
+    """Add a thin horizontal line paragraph."""
+    from docx.shared import Pt, RGBColor
+    from docx.oxml.ns import qn
+    p = doc.add_paragraph()
+    p.paragraph_format.space_before = Pt(2)
+    p.paragraph_format.space_after = Pt(2)
+    pPr = p._p.get_or_add_pPr()
+    pBdr = pPr.makeelement(qn("w:pBdr"), {})
+    bottom = pBdr.makeelement(qn("w:bottom"), {
+        qn("w:val"): "single",
+        qn("w:sz"): "4",
+        qn("w:space"): "1",
+        qn("w:color"): "CCCCCC",
+    })
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+
+def _add_experience_block(doc: Any, exp_text: str, bold_size: float = 10.5) -> None:
+    from docx.shared import Pt
+    lines = exp_text.split("\n")
+    is_first_content = True
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        p = doc.add_paragraph()
+        if is_first_content:
+            run = p.add_run(stripped)
+            run.bold = True
+            run.font.size = Pt(bold_size)
+            is_first_content = False
+        elif stripped.startswith("•"):
+            try:
+                p.style = doc.styles["List Bullet"]
+            except KeyError:
+                p.style = doc.styles["Normal"]
+            p.add_run(stripped.lstrip("• "))
+        else:
+            p.add_run(stripped)
+
+
+def _split_entries(text: str) -> list[str]:
+    """Split education/certification text on semicolons or newlines."""
+    import re
+    return [e.strip() for e in re.split(r"[;\n]", text) if e.strip()]
+
+
+def _add_separated_entries(doc_or_cell: Any, entries: list[str], font_size: float = 10, font_name: str = "Calibri") -> None:
+    """Add multiple entries as separate paragraphs with spacing."""
+    from docx.shared import Pt
+    for i, entry in enumerate(entries):
+        p = doc_or_cell.add_paragraph()
+        p.paragraph_format.space_before = Pt(4 if i > 0 else 0)
+        p.paragraph_format.space_after = Pt(2)
+        run = p.add_run(entry)
+        run.font.size = Pt(font_size)
+        run.font.name = font_name
+
+
+# ── Style-specific resume builders ────────────────────────────────────────
+
+
+def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
     from docx.shared import Pt, Inches, RGBColor
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
-
-    settings.output_dir.mkdir(parents=True, exist_ok=True)
-
-    doc = Document()
 
     for section in doc.sections:
         section.top_margin = Inches(0.7)
@@ -363,46 +423,382 @@ def build_resume_docx(content: dict[str, Any]) -> str:
         section.right_margin = Inches(0.9)
 
     style = doc.styles["Normal"]
-    font = style.font
-    font.name = "Calibri"
-    font.size = Pt(10.5)
-    font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
     style.paragraph_format.space_after = Pt(4)
     style.paragraph_format.space_before = Pt(0)
 
     if content.get("summary"):
         _add_heading(doc, "Professional Summary")
+        _add_horizontal_rule(doc)
         doc.add_paragraph(content["summary"])
 
     experiences = content.get("experiences", [])
     if experiences:
         _add_heading(doc, "Professional Experience")
+        _add_horizontal_rule(doc)
         for exp_text in experiences:
-            lines = exp_text.split("\n")
-            for j, line in enumerate(lines):
-                p = doc.add_paragraph()
-                stripped = line.strip()
-                if j == 0:
-                    run = p.add_run(stripped)
-                    run.bold = True
-                    run.font.size = Pt(10.5)
-                elif stripped.startswith("•"):
-                    p.style = doc.styles.get("List Bullet", doc.styles["Normal"])
-                    p.add_run(stripped.lstrip("• "))
-                else:
-                    p.add_run(stripped)
+            _add_experience_block(doc, exp_text)
 
     if content.get("skills"):
         _add_heading(doc, "Skills")
+        _add_horizontal_rule(doc)
         doc.add_paragraph(content["skills"])
 
     if content.get("education"):
         _add_heading(doc, "Education")
-        doc.add_paragraph(content["education"])
+        _add_horizontal_rule(doc)
+        _add_separated_entries(doc, _split_entries(content["education"]))
 
     if content.get("certifications"):
         _add_heading(doc, "Certifications")
-        doc.add_paragraph(content["certifications"])
+        _add_horizontal_rule(doc)
+        _add_separated_entries(doc, _split_entries(content["certifications"]))
+
+
+def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
+    """Two-column layout: 30% sidebar flush-left, 70% main content."""
+    from docx.shared import Pt, Inches, RGBColor, Cm, Emu
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+
+    for section in doc.sections:
+        section.top_margin = Inches(0)
+        section.bottom_margin = Inches(0)
+        section.left_margin = Inches(0)
+        section.right_margin = Inches(0.4)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.paragraph_format.space_after = Pt(3)
+    style.paragraph_format.space_before = Pt(0)
+
+    page_width = Inches(8.5) - Inches(0) - Inches(0.4)
+    sidebar_width = int(page_width * 0.30)
+    main_width = int(page_width * 0.70)
+
+    table = doc.add_table(rows=1, cols=2)
+    table.alignment = WD_TABLE_ALIGNMENT.LEFT
+    table.autofit = False
+
+    table.columns[0].width = sidebar_width
+    table.columns[1].width = main_width
+    table.cell(0, 0).width = sidebar_width
+    table.cell(0, 1).width = main_width
+
+    from docx.oxml.ns import qn
+
+    tbl = table._tbl
+    tblPr = tbl.tblPr if tbl.tblPr is not None else tbl.makeelement(qn("w:tblPr"), {})
+    for old_borders in tblPr.findall(qn("w:tblBorders")):
+        tblPr.remove(old_borders)
+    borders = tblPr.makeelement(qn("w:tblBorders"), {})
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        borders.append(tblPr.makeelement(qn(f"w:{side}"), {
+            qn("w:val"): "none", qn("w:sz"): "0", qn("w:space"): "0", qn("w:color"): "auto",
+        }))
+    tblPr.append(borders)
+
+    sidebar = table.cell(0, 0)
+    main = table.cell(0, 1)
+
+    # Zero cell margins on sidebar for flush-left appearance
+    tcPr_sb = sidebar._tc.get_or_add_tcPr()
+    tcMar = tcPr_sb.makeelement(qn("w:tcMar"), {})
+    for side_name, val in (("left", "0"), ("top", "113"), ("right", "113"), ("bottom", "113")):
+        tcMar.append(tcPr_sb.makeelement(qn(f"w:{side_name}"), {qn("w:w"): val, qn("w:type"): "dxa"}))
+    tcPr_sb.append(tcMar)
+
+    shading = tcPr_sb.makeelement(qn("w:shd"), {
+        qn("w:fill"): "F0F4F8",
+        qn("w:val"): "clear",
+    })
+    tcPr_sb.append(shading)
+
+    def _sidebar_heading(text: str) -> None:
+        p = sidebar.add_paragraph()
+        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.space_after = Pt(3)
+        p.paragraph_format.left_indent = Pt(12)
+        run = p.add_run(text.upper())
+        run.bold = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(0x33, 0x6B, 0x87)
+        run.font.name = "Calibri"
+
+    def _sidebar_text(text: str) -> None:
+        p = sidebar.add_paragraph()
+        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.left_indent = Pt(12)
+        run = p.add_run(text)
+        run.font.size = Pt(9)
+        run.font.name = "Calibri"
+        run.font.color.rgb = RGBColor(0x33, 0x40, 0x55)
+
+    if content.get("skills"):
+        _sidebar_heading("Skills")
+        for skill in content["skills"].split(","):
+            s = skill.strip()
+            if s:
+                _sidebar_text(f"• {s}")
+
+    if content.get("education"):
+        _sidebar_heading("Education")
+        for entry in _split_entries(content["education"]):
+            _sidebar_text(entry)
+
+    if content.get("certifications"):
+        _sidebar_heading("Certifications")
+        for entry in _split_entries(content["certifications"]):
+            _sidebar_text(f"✓ {entry}")
+
+    # Main column — left padding via cell margin
+    tcPr_main = main._tc.get_or_add_tcPr()
+    tcMar_main = tcPr_main.makeelement(qn("w:tcMar"), {})
+    for side_name, val in (("left", "170"), ("top", "113"), ("right", "57"), ("bottom", "113")):
+        tcMar_main.append(tcPr_main.makeelement(qn(f"w:{side_name}"), {qn("w:w"): val, qn("w:type"): "dxa"}))
+    tcPr_main.append(tcMar_main)
+
+    def _main_heading(text: str) -> None:
+        p = main.add_paragraph()
+        p.paragraph_format.space_before = Pt(8)
+        p.paragraph_format.space_after = Pt(4)
+        run = p.add_run(text.upper())
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+        run.font.name = "Calibri"
+
+    def _main_text(text: str) -> None:
+        p = main.add_paragraph()
+        p.paragraph_format.space_after = Pt(3)
+        run = p.add_run(text)
+        run.font.size = Pt(10)
+        run.font.name = "Calibri"
+
+    if content.get("summary"):
+        _main_heading("Professional Summary")
+        _main_text(content["summary"])
+
+    experiences = content.get("experiences", [])
+    if experiences:
+        _main_heading("Professional Experience")
+        for exp_text in experiences:
+            lines = exp_text.split("\n")
+            is_first = True
+            for line in lines:
+                stripped = line.strip()
+                if not stripped:
+                    continue
+                p = main.add_paragraph()
+                p.paragraph_format.space_after = Pt(1)
+                if is_first:
+                    run = p.add_run(stripped)
+                    run.bold = True
+                    run.font.size = Pt(10)
+                    run.font.name = "Calibri"
+                    is_first = False
+                elif stripped.startswith("•"):
+                    run = p.add_run(stripped)
+                    run.font.size = Pt(9.5)
+                    run.font.name = "Calibri"
+                else:
+                    run = p.add_run(stripped)
+                    run.font.size = Pt(10)
+                    run.font.name = "Calibri"
+
+
+def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
+    """ATS-friendly: no colors, no decorations, maximum compatibility."""
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.75)
+        section.bottom_margin = Inches(0.75)
+        section.left_margin = Inches(1.0)
+        section.right_margin = Inches(1.0)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Arial"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_before = Pt(0)
+
+    def _minimal_heading(text: str) -> None:
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(12)
+        p.paragraph_format.space_after = Pt(4)
+        run = p.add_run(text.upper())
+        run.bold = True
+        run.font.size = Pt(11)
+        run.font.name = "Arial"
+        run.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+
+    if content.get("summary"):
+        _minimal_heading("Summary")
+        doc.add_paragraph(content["summary"])
+
+    experiences = content.get("experiences", [])
+    if experiences:
+        _minimal_heading("Experience")
+        for exp_text in experiences:
+            _add_experience_block(doc, exp_text)
+
+    if content.get("skills"):
+        _minimal_heading("Skills")
+        doc.add_paragraph(content["skills"])
+
+    if content.get("education"):
+        _minimal_heading("Education")
+        _add_separated_entries(doc, _split_entries(content["education"]), font_size=10.5, font_name="Arial")
+
+    if content.get("certifications"):
+        _minimal_heading("Certifications")
+        _add_separated_entries(doc, _split_entries(content["certifications"]), font_size=10.5, font_name="Arial")
+
+
+def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
+    """Premium layout with a dark header band and strong visual hierarchy."""
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.6)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Georgia"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_before = Pt(0)
+
+    # Dark header band
+    header_table = doc.add_table(rows=1, cols=1)
+    header_table.autofit = True
+    cell = header_table.cell(0, 0)
+    from docx.oxml.ns import qn
+    shading = cell._tc.get_or_add_tcPr().makeelement(qn("w:shd"), {
+        qn("w:fill"): "1E293B",
+        qn("w:val"): "clear",
+    })
+    cell._tc.get_or_add_tcPr().append(shading)
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(14)
+    p.paragraph_format.space_after = Pt(14)
+    run = p.add_run("EXECUTIVE RESUME")
+    run.bold = True
+    run.font.size = Pt(16)
+    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    run.font.name = "Georgia"
+
+    ACCENT = (0x33, 0x6B, 0x87)
+
+    if content.get("summary"):
+        _add_heading(doc, "Executive Summary", color=ACCENT, size=13)
+        _add_horizontal_rule(doc)
+        doc.add_paragraph(content["summary"])
+
+    experiences = content.get("experiences", [])
+    if experiences:
+        _add_heading(doc, "Professional Experience", color=ACCENT, size=13)
+        _add_horizontal_rule(doc)
+        for exp_text in experiences:
+            _add_experience_block(doc, exp_text, bold_size=11)
+
+    if content.get("skills"):
+        _add_heading(doc, "Core Competencies", color=ACCENT, size=13)
+        _add_horizontal_rule(doc)
+        doc.add_paragraph(content["skills"])
+
+    if content.get("education"):
+        _add_heading(doc, "Education", color=ACCENT, size=13)
+        _add_horizontal_rule(doc)
+        _add_separated_entries(doc, _split_entries(content["education"]))
+
+    if content.get("certifications"):
+        _add_heading(doc, "Certifications & Credentials", color=ACCENT, size=13)
+        _add_horizontal_rule(doc)
+        _add_separated_entries(doc, _split_entries(content["certifications"]))
+
+
+def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
+    """Bold design with accent color headings and a colored top band."""
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.6)
+        section.left_margin = Inches(0.8)
+        section.right_margin = Inches(0.8)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_before = Pt(0)
+
+    # Gradient-style accent bar at top
+    bar_table = doc.add_table(rows=1, cols=2)
+    bar_table.autofit = True
+    from docx.oxml.ns import qn
+    for idx, color_hex in enumerate(["7C3AED", "3B82F6"]):
+        cell = bar_table.cell(0, idx)
+        shading = cell._tc.get_or_add_tcPr().makeelement(qn("w:shd"), {
+            qn("w:fill"): color_hex,
+            qn("w:val"): "clear",
+        })
+        cell._tc.get_or_add_tcPr().append(shading)
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_after = Pt(6)
+
+    ACCENT = (0x7C, 0x3A, 0xED)
+
+    if content.get("summary"):
+        _add_heading(doc, "About Me", color=ACCENT, size=13)
+        doc.add_paragraph(content["summary"])
+
+    experiences = content.get("experiences", [])
+    if experiences:
+        _add_heading(doc, "Experience", color=ACCENT, size=13)
+        for exp_text in experiences:
+            _add_experience_block(doc, exp_text, bold_size=11)
+
+    if content.get("skills"):
+        _add_heading(doc, "Skills & Tools", color=ACCENT, size=13)
+        doc.add_paragraph(content["skills"])
+
+    if content.get("education"):
+        _add_heading(doc, "Education", color=ACCENT, size=13)
+        _add_separated_entries(doc, _split_entries(content["education"]))
+
+    if content.get("certifications"):
+        _add_heading(doc, "Certifications", color=ACCENT, size=13)
+        _add_separated_entries(doc, _split_entries(content["certifications"]))
+
+
+_STYLE_BUILDERS: dict[str, Any] = {
+    "classic": _build_classic_resume,
+    "modern": _build_modern_resume,
+    "minimal": _build_minimal_resume,
+    "executive": _build_executive_resume,
+    "creative": _build_creative_resume,
+}
+
+
+def build_resume_docx(content: dict[str, Any], template_style: str | None = None) -> str:
+    """Build a styled resume docx from scratch using the selected gallery template."""
+    settings.output_dir.mkdir(parents=True, exist_ok=True)
+
+    doc = Document()
+    builder = _STYLE_BUILDERS.get(template_style or "classic", _build_classic_resume)
+    builder(doc, content)
 
     output_filename = f"{uuid.uuid4()}.docx"
     output_path = settings.output_dir / output_filename
@@ -410,13 +806,11 @@ def build_resume_docx(content: dict[str, Any]) -> str:
     return output_filename
 
 
-def build_cover_letter_docx(cover_letter_text: str) -> str:
-    """Build a standalone cover-letter docx."""
+# ── Style-specific cover letter builders ──────────────────────────────────
+
+
+def _build_classic_cover_letter(doc: Any, cover_letter_text: str) -> None:
     from docx.shared import Pt, Inches, RGBColor
-
-    settings.output_dir.mkdir(parents=True, exist_ok=True)
-
-    doc = Document()
 
     for section in doc.sections:
         section.top_margin = Inches(1.0)
@@ -425,10 +819,9 @@ def build_cover_letter_docx(cover_letter_text: str) -> str:
         section.right_margin = Inches(1.15)
 
     style = doc.styles["Normal"]
-    font = style.font
-    font.name = "Calibri"
-    font.size = Pt(11)
-    font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.font.name = "Calibri"
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
     style.paragraph_format.space_after = Pt(8)
     style.paragraph_format.line_spacing = Pt(15)
 
@@ -436,6 +829,163 @@ def build_cover_letter_docx(cover_letter_text: str) -> str:
         text = paragraph_text.strip()
         if text:
             doc.add_paragraph(text)
+
+
+def _build_modern_cover_letter(doc: Any, cover_letter_text: str) -> None:
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(1.0)
+        section.right_margin = Inches(1.0)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x33, 0x40, 0x55)
+    style.paragraph_format.space_after = Pt(6)
+    style.paragraph_format.line_spacing = Pt(14)
+
+    # Accent bar
+    from docx.oxml.ns import qn
+    bar_table = doc.add_table(rows=1, cols=1)
+    cell = bar_table.cell(0, 0)
+    shading = cell._tc.get_or_add_tcPr().makeelement(qn("w:shd"), {
+        qn("w:fill"): "336B87",
+        qn("w:val"): "clear",
+    })
+    cell._tc.get_or_add_tcPr().append(shading)
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(3)
+    p.paragraph_format.space_after = Pt(3)
+
+    doc.add_paragraph("")
+
+    for paragraph_text in cover_letter_text.split("\n\n"):
+        text = paragraph_text.strip()
+        if text:
+            doc.add_paragraph(text)
+
+
+def _build_minimal_cover_letter(doc: Any, cover_letter_text: str) -> None:
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(1.0)
+        section.bottom_margin = Inches(1.0)
+        section.left_margin = Inches(1.0)
+        section.right_margin = Inches(1.0)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Arial"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
+    style.paragraph_format.space_after = Pt(8)
+    style.paragraph_format.line_spacing = Pt(14)
+
+    for paragraph_text in cover_letter_text.split("\n\n"):
+        text = paragraph_text.strip()
+        if text:
+            doc.add_paragraph(text)
+
+
+def _build_executive_cover_letter(doc: Any, cover_letter_text: str) -> None:
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(1.0)
+        section.right_margin = Inches(1.0)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Georgia"
+    style.font.size = Pt(11)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.paragraph_format.space_after = Pt(8)
+    style.paragraph_format.line_spacing = Pt(16)
+
+    # Dark header
+    from docx.oxml.ns import qn
+    header_table = doc.add_table(rows=1, cols=1)
+    cell = header_table.cell(0, 0)
+    shading = cell._tc.get_or_add_tcPr().makeelement(qn("w:shd"), {
+        qn("w:fill"): "1E293B",
+        qn("w:val"): "clear",
+    })
+    cell._tc.get_or_add_tcPr().append(shading)
+    p = cell.paragraphs[0]
+    p.paragraph_format.space_before = Pt(10)
+    p.paragraph_format.space_after = Pt(10)
+    run = p.add_run("COVER LETTER")
+    run.bold = True
+    run.font.size = Pt(14)
+    run.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    run.font.name = "Georgia"
+
+    doc.add_paragraph("")
+
+    for paragraph_text in cover_letter_text.split("\n\n"):
+        text = paragraph_text.strip()
+        if text:
+            doc.add_paragraph(text)
+
+
+def _build_creative_cover_letter(doc: Any, cover_letter_text: str) -> None:
+    from docx.shared import Pt, Inches, RGBColor
+
+    for section in doc.sections:
+        section.top_margin = Inches(0.8)
+        section.bottom_margin = Inches(0.8)
+        section.left_margin = Inches(1.0)
+        section.right_margin = Inches(1.0)
+
+    style = doc.styles["Normal"]
+    style.font.name = "Calibri"
+    style.font.size = Pt(10.5)
+    style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    style.paragraph_format.space_after = Pt(7)
+    style.paragraph_format.line_spacing = Pt(15)
+
+    # Gradient accent bar
+    from docx.oxml.ns import qn
+    bar_table = doc.add_table(rows=1, cols=2)
+    for idx, color_hex in enumerate(["7C3AED", "3B82F6"]):
+        cell = bar_table.cell(0, idx)
+        shading = cell._tc.get_or_add_tcPr().makeelement(qn("w:shd"), {
+            qn("w:fill"): color_hex,
+            qn("w:val"): "clear",
+        })
+        cell._tc.get_or_add_tcPr().append(shading)
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_before = Pt(4)
+        p.paragraph_format.space_after = Pt(4)
+
+    doc.add_paragraph("")
+
+    for paragraph_text in cover_letter_text.split("\n\n"):
+        text = paragraph_text.strip()
+        if text:
+            doc.add_paragraph(text)
+
+
+_CL_STYLE_BUILDERS: dict[str, Any] = {
+    "classic": _build_classic_cover_letter,
+    "modern": _build_modern_cover_letter,
+    "minimal": _build_minimal_cover_letter,
+    "executive": _build_executive_cover_letter,
+    "creative": _build_creative_cover_letter,
+}
+
+
+def build_cover_letter_docx(cover_letter_text: str, template_style: str | None = None) -> str:
+    """Build a styled standalone cover-letter docx."""
+    settings.output_dir.mkdir(parents=True, exist_ok=True)
+
+    doc = Document()
+    builder = _CL_STYLE_BUILDERS.get(template_style or "classic", _build_classic_cover_letter)
+    builder(doc, cover_letter_text)
 
     output_filename = f"cover-letter-{uuid.uuid4()}.docx"
     output_path = settings.output_dir / output_filename
@@ -554,6 +1104,7 @@ _SECTION_REGEN_SYSTEM = (
     "--- BEGIN CURRENT CONTENT ---\n"
     "{current_content}\n"
     "--- END CURRENT CONTENT ---\n\n"
+    "{user_instruction_block}"
     "Generate an IMPROVED version that is DIFFERENT from the previous one. "
     "Make it more detailed, better aligned with the JD, or better worded. "
     "Return ONLY the new content for this section as plain text (no JSON wrapper)."
@@ -604,6 +1155,7 @@ async def regenerate_section(
     section_id: str,
     current_content: str,
     cover_letter_sentiment: str | None = None,
+    user_instruction: str = "",
 ) -> str:
     """Regenerate a single section of the resume or cover letter."""
     if section_id.startswith("experience_"):
@@ -621,6 +1173,18 @@ async def regenerate_section(
             sentiment_key, _SENTIMENT_PREAMBLES["formal"]
         )
         instructions = f"{preamble}\n\n{instructions}"
+
+    user_instruction_block = ""
+    if user_instruction.strip():
+        user_instruction_block = (
+            "═══════════════════════════════════════════════════\n"
+            "USER'S SPECIFIC INSTRUCTION FOR THIS SECTION:\n"
+            "═══════════════════════════════════════════════════\n"
+            f"{user_instruction.strip()}\n\n"
+            "Follow the user's instruction above as the PRIMARY guide for "
+            "regeneration. The default instructions still apply where the "
+            "user's instruction does not contradict them.\n\n"
+        )
 
     prompt = ChatPromptTemplate.from_messages([
         ("system", _SECTION_REGEN_SYSTEM),
@@ -644,6 +1208,7 @@ async def regenerate_section(
         "section_type": section_type,
         "section_instructions": instructions,
         "current_content": current_content,
+        "user_instruction_block": user_instruction_block,
     })
 
     return response.content.strip()
@@ -653,15 +1218,16 @@ def finalize_document(
     *,
     template_path: Path | None,
     content: dict[str, Any],
+    template_style: str | None = None,
 ) -> dict[str, str]:
     """
     Phase 2 of human-in-the-loop: take the (possibly user-edited) content
     and produce the final docx files.
 
-    If *template_path* is provided, inject into the user's template.
-    Otherwise build a clean resume docx from scratch.
+    If *template_path* is provided, inject into the user's uploaded template.
+    Otherwise build a styled resume docx using *template_style* (gallery selection).
 
-    Always builds a separate cover-letter docx.
+    Always builds a separate cover-letter docx matching the style.
 
     Returns ``{"resume_url": str, "cover_letter_url": str}``.
     """
@@ -678,10 +1244,10 @@ def finalize_document(
             resume_fields["experience_1"] = str(experiences)
         resume_filename = inject_into_template(template_path, resume_fields)
     else:
-        resume_filename = build_resume_docx(content)
+        resume_filename = build_resume_docx(content, template_style=template_style)
 
     cover_letter_text = content.get("cover_letter", "")
-    cl_filename = build_cover_letter_docx(cover_letter_text) if cover_letter_text else ""
+    cl_filename = build_cover_letter_docx(cover_letter_text, template_style=template_style) if cover_letter_text else ""
 
     return {"resume_url": resume_filename, "cover_letter_url": cl_filename}
 
@@ -695,6 +1261,7 @@ async def tailor_resume(
     job_description: str,
     cover_letter_sentiment: str | None,
     template_path: Path | None,
+    template_style: str | None = None,
     history_context: str = "",
 ) -> dict[str, str]:
     """
@@ -717,6 +1284,7 @@ async def tailor_resume(
     result = finalize_document(
         template_path=template_path,
         content=draft,
+        template_style=template_style,
     )
 
     return {

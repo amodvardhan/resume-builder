@@ -87,6 +87,15 @@ async def _create_tables() -> None:
             ))
             logger.info("Migrated: added reference_application_id column to applications table")
 
+        # Migration: make template_id nullable (template is optional when using gallery styles)
+        try:
+            await conn.execute(text(
+                "ALTER TABLE applications ALTER COLUMN template_id DROP NOT NULL"
+            ))
+            logger.info("Migrated: made template_id nullable on applications table")
+        except Exception:
+            pass
+
     # One-time re-parse: refresh extracted_text for all resumes whose stored
     # text was produced by an older parser that missed SDT/form-field content.
     async with AsyncSession(engine) as session:
@@ -154,7 +163,7 @@ class ApplicationResponse(BaseModel):
     id: uuid.UUID
     user_id: uuid.UUID
     resume_id: uuid.UUID | None
-    template_id: uuid.UUID
+    template_id: uuid.UUID | None
     job_title: str
     organization: str
     job_description_html: str
@@ -175,6 +184,7 @@ class TailorRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
     template_id: uuid.UUID | None = None
+    template_style: str | None = None
     job_title: str
     organization: str
     job_description_html: str
@@ -192,6 +202,7 @@ class TailorPreviewRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
     template_id: uuid.UUID | None = None
+    template_style: str | None = None
     job_title: str
     organization: str
     job_description_html: str
@@ -212,6 +223,7 @@ class TailorConfirmRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
     template_id: uuid.UUID | None = None
+    template_style: str | None = None
     job_title: str
     organization: str
     job_description_html: str
@@ -240,6 +252,7 @@ class RegenerateSectionRequest(BaseModel):
     organization: str
     job_description_html: str
     cover_letter_sentiment: str | None = None
+    user_instruction: str | None = None
 
 
 class RegenerateSectionResponse(BaseModel):
@@ -552,6 +565,7 @@ async def tailor(
             job_description=jd_plain_text,
             cover_letter_sentiment=payload.cover_letter_sentiment,
             template_path=template_path,
+            template_style=payload.template_style,
         )
     except Exception:
         logger.exception("Tailoring engine failed")
@@ -663,6 +677,7 @@ async def tailor_confirm(
         result = finalize_document(
             template_path=template_path,
             content=content,
+            template_style=payload.template_style,
         )
     except Exception:
         logger.exception("Document finalization failed")
@@ -725,6 +740,7 @@ async def tailor_regenerate_section(
             section_id=payload.section_id,
             current_content=payload.current_content,
             cover_letter_sentiment=payload.cover_letter_sentiment,
+            user_instruction=payload.user_instruction or "",
         )
     except Exception:
         logger.exception("Section regeneration failed")

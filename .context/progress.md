@@ -86,3 +86,35 @@
   > Each field (summary, experiences, skills, education, cover letter) is editable. The "Back to Editor" button returns to the input phase without losing JD/upload state.
 * [x] Confirmation generates the final `.docx` and persists the application with the user-approved content.
   > `POST /api/v1/applications/tailor/confirm` accepts the edited content, injects into the docx template via `finalize_document()`, and persists the `Application` row. The tailoring engine's `tailor_resume()` is refactored into `generate_draft()` + `finalize_document()` to support both the HITL flow and the legacy clone flow.
+
+## REQ-008: Template Gallery Styling Consistency
+
+* [x] The "Application Ready" (done) page renders the resume preview using the same template-aware layout as the Draft Review page.
+  > `App.tsx` "done" phase now branches on `templateStyle === "modern"` to render a `tpl-grid` + `tpl-sidebar` / `tpl-main` two-column layout for the modern template, and uses proper `tpl-header` for executive/creative/classic — matching `DraftReview.tsx` exactly.
+* [x] The modern template uses a 30/70 sidebar-to-main ratio on all surfaces (CSS preview and `.docx`).
+  > CSS: `.tpl-modern .tpl-grid` updated from `210px 1fr` to `30% 70%`. Backend: `_build_modern_resume` computes sidebar/main widths as 30%/70% of available page width.
+* [x] The modern template sidebar is flush-left with zero margin, no border-radius, and spans the full document height.
+  > CSS: `.tpl-modern .tpl-sidebar` updated to `border-radius: 0; margin: 0; min-height: 100%`. `.tpl-modern.doc-page` sets `padding: 0; overflow: hidden`.
+* [x] The downloadable `.docx` for the modern template has zero left page margin, sidebar cell with no left padding, and explicit 30/70 column widths.
+  > Backend: `_build_modern_resume` sets `left_margin = Inches(0)`, sidebar cell has `tcMar.left = 0 dxa`, paragraph content indented via `left_indent = Pt(12)` for readability. Table borders set to `none`.
+* [x] Cover letter page on the "Application Ready" screen has proper padding (not affected by modern template's zero-padding rules).
+  > Removed overly broad `.tpl-modern.doc-page > div { padding: 0 }` CSS rule that was zeroing out all direct children, including the cover letter wrapper. Cover letter's Tailwind `px-12 py-10` now applies correctly.
+* [x] Skills displayed as pill badges on the "Application Ready" screen for all template styles.
+  > Skills text split by comma, each rendered as a `.skill-pill` inside a `.skill-pills` flex-wrap container. Template-specific pill variants for modern (teal), executive (squared), and creative (gradient).
+* [x] Education entries have visual separators when multiple academic entries are present.
+  > Education text split by newline, each entry rendered inside `.edu-entries` container with `.edu-entry + .edu-entry` border-top separator rule.
+* [x] Certifications rendered with clean multi-entry formatting and shield-check icons.
+  > Certifications split by newline, each rendered in `.cert-entries` container with a shield-check SVG icon (`.cert-icon`) and template-aware color theming.
+
+## REQ-009: WYSIWYG Section Formatting Consistency
+
+* [x] Skills render as pill badges on both the Draft Review and Application Ready screens.
+  > `FormattedPreview` component in `DraftReview.tsx` renders skills as `.skill-pills` with `.skill-pill` elements. Matches the done page rendering in `App.tsx`.
+* [x] Education entries separated by `;` or `\n` display as distinct blocks with visual dividers.
+  > Both `DraftReview.tsx` (`FormattedPreview`) and `App.tsx` (done page) split on `/[;\n]/` regex. Backend `_split_entries()` uses the same regex. Entries render in `.edu-entries` with `.edu-entry + .edu-entry` border-top divider.
+* [x] Certifications separated by `;` or `\n` display as individual entries with shield icons.
+  > Same split logic. Each entry rendered with `.cert-entry` containing a shield-check SVG `.cert-icon`. Template-aware color variants for modern, creative, executive.
+* [x] The Draft Review screen uses a click-to-edit toggle: formatted preview by default, TipTap editor on click.
+  > `SectionBlock` checks `FORMATTABLE_SECTIONS` (skills, education, certifications). Default: shows `FormattedPreview` with "click to edit" hint. On click: swaps to `SectionEditor` (TipTap). Click-outside or "Done" button returns to formatted view.
+* [x] The downloadable `.docx` splits education and certifications on `;` and `\n` into separate paragraphs.
+  > Backend utility `_split_entries(text)` uses `re.split(r"[;\n]", text)`. All 5 template builders (classic, modern, minimal, executive, creative) call `_add_separated_entries()` for education and certifications. Modern sidebar uses `_sidebar_text()` per entry with `✓` prefix for certifications.

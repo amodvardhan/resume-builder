@@ -74,6 +74,7 @@ export interface TailorRequest {
   user_id: string;
   resume_id: string;
   template_id?: string | null;
+  template_style?: string;
   job_title: string;
   organization: string;
   job_description_html: string;
@@ -93,6 +94,7 @@ export interface TailorPreviewRequest {
   user_id: string;
   resume_id: string;
   template_id?: string | null;
+  template_style?: string;
   job_title: string;
   organization: string;
   job_description_html: string;
@@ -114,6 +116,7 @@ export interface TailorConfirmRequest {
   user_id: string;
   resume_id: string;
   template_id?: string | null;
+  template_style?: string;
   job_title: string;
   organization: string;
   job_description_html: string;
@@ -144,6 +147,7 @@ export interface RegenerateSectionRequest {
   organization: string;
   job_description_html: string;
   cover_letter_sentiment?: string;
+  user_instruction?: string;
 }
 
 export interface RegenerateSectionResponse {

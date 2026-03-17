@@ -25,7 +25,7 @@ interface DraftReviewProps {
   onConfirm: (edited: TailorPreviewResponse) => void;
   onBack: () => void;
   onRegenerate?: () => void;
-  onRegenerateSection?: (sectionId: string, currentContent: string) => Promise<string>;
+  onRegenerateSection?: (sectionId: string, currentContent: string, userInstruction?: string) => Promise<string>;
   isConfirming: boolean;
   isRegenerating?: boolean;
   error?: string | null;
@@ -133,20 +133,57 @@ const SOURCE_ACCENT: Record<SourceType, string> = {
    Helpers
    ═══════════════════════════════════════════════════════════════════════ */
 
-function textToHtml(text: string): string {
+function textToHtml(text: string, sectionId?: string): string {
   if (!text?.trim()) return "<p></p>";
-  return text
-    .split(/\n{2,}/)
-    .map((p) => `<p>${p.replace(/\n/g, "<br>")}</p>`)
-    .join("");
+
+  const isExperience = sectionId?.startsWith("experience_");
+  const lines = text.split("\n");
+  const html: string[] = [];
+  let inList = false;
+  let firstContent = true;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      if (inList) { html.push("</ul>"); inList = false; }
+      continue;
+    }
+
+    const isBullet = /^[•\-–]\s/.test(trimmed);
+
+    if (isBullet) {
+      if (!inList) { html.push("<ul>"); inList = true; }
+      html.push(`<li>${trimmed.replace(/^[•\-–]\s*/, "")}</li>`);
+      firstContent = false;
+    } else {
+      if (inList) { html.push("</ul>"); inList = false; }
+      if (isExperience && firstContent && trimmed.includes(" | ")) {
+        html.push(`<h3>${trimmed}</h3>`);
+      } else {
+        html.push(`<p>${trimmed}</p>`);
+      }
+      firstContent = false;
+    }
+  }
+
+  if (inList) html.push("</ul>");
+  return html.join("") || "<p></p>";
 }
 
 function extractText(editor: Editor): string {
-  return editor.state.doc.textBetween(
-    0,
-    editor.state.doc.content.size,
-    "\n\n",
-  );
+  const parts: string[] = [];
+  editor.state.doc.content.forEach((node) => {
+    if (node.type.name === "bulletList" || node.type.name === "orderedList") {
+      const bullets: string[] = [];
+      node.content.forEach((li) => {
+        bullets.push("• " + li.textContent);
+      });
+      parts.push(bullets.join("\n"));
+    } else if (node.textContent) {
+      parts.push(node.textContent);
+    }
+  });
+  return parts.join("\n\n");
 }
 
 function formatOriginalText(raw: string): string[] {
@@ -160,10 +197,12 @@ function formatOriginalText(raw: string): string[] {
 
 const SectionEditor = memo(function SectionEditor({
   initialContent,
+  sectionId,
   onChange,
   onFocus,
 }: {
   initialContent: string;
+  sectionId?: string;
   onChange: (text: string) => void;
   onFocus: (editor: Editor) => void;
 }) {
@@ -179,7 +218,7 @@ const SectionEditor = memo(function SectionEditor({
         types: ["heading", "paragraph"],
       }),
     ],
-    content: textToHtml(initialContent),
+    content: textToHtml(initialContent, sectionId),
     editorProps: {
       attributes: {
         class: "doc-editor-content",
@@ -622,6 +661,134 @@ function SectionNav({
    Section Block — heading + editor rendered inside a document page
    ═══════════════════════════════════════════════════════════════════════ */
 
+function RegenPrompt({
+  onSubmit,
+  onCancel,
+  isRegenerating,
+}: {
+  onSubmit: (instruction: string) => void;
+  onCancel: () => void;
+  isRegenerating?: boolean;
+}) {
+  const [instruction, setInstruction] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, []);
+
+  return (
+    <div
+      className="mt-2 rounded-lg border border-accent/20 bg-accent-light/30 p-3 shadow-sm"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <textarea
+        ref={inputRef}
+        value={instruction}
+        onChange={(e) => setInstruction(e.target.value)}
+        placeholder="How should I improve this? (leave empty for default AI regeneration)"
+        rows={2}
+        disabled={isRegenerating}
+        className="w-full resize-none rounded-md border border-border-muted bg-surface px-3 py-2 text-xs text-primary placeholder:text-secondary/50 focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent/20 disabled:opacity-50"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+            e.preventDefault();
+            onSubmit(instruction);
+          }
+          if (e.key === "Escape") onCancel();
+        }}
+      />
+      <div className="mt-2 flex items-center justify-between">
+        <span className="text-[9px] text-secondary/50">
+          {"\u2318"}+Enter to submit
+        </span>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onCancel}
+            disabled={isRegenerating}
+            className="rounded px-2.5 py-1 text-[10px] font-medium text-secondary transition-colors hover:text-primary disabled:opacity-40"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onSubmit(instruction)}
+            disabled={isRegenerating}
+            className="inline-flex items-center gap-1 rounded-md bg-accent px-3 py-1 text-[10px] font-semibold text-white transition-colors hover:bg-accent/90 disabled:opacity-40"
+          >
+            {isRegenerating ? <MiniSpinner /> : null}
+            {isRegenerating ? "Working…" : instruction.trim() ? "Regenerate with Instructions" : "Regenerate"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const FORMATTABLE_SECTIONS = new Set(["skills", "education", "certifications"]);
+
+function FormattedPreview({ sectionId, content, onClick }: { sectionId: string; content: string; onClick: () => void }) {
+  if (sectionId === "skills") {
+    return (
+      <div className="formatted-preview" onClick={onClick}>
+        <span className="formatted-preview-hint">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          click to edit
+        </span>
+        <div className="skill-pills">
+          {content.split(",").map((s, i) => {
+            const trimmed = s.trim();
+            return trimmed ? <span key={i} className="skill-pill">{trimmed}</span> : null;
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  if (sectionId === "education") {
+    const entries = content.split(/[;\n]/).filter((l) => l.trim());
+    return (
+      <div className="formatted-preview" onClick={onClick}>
+        <span className="formatted-preview-hint">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          click to edit
+        </span>
+        <div className="edu-entries">
+          {entries.map((entry, i) => (
+            <div key={i} className="edu-entry">
+              <p className="text-sm leading-relaxed text-primary/85">{entry.trim()}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  if (sectionId === "certifications") {
+    const entries = content.split(/[;\n]/).filter((l) => l.trim());
+    return (
+      <div className="formatted-preview" onClick={onClick}>
+        <span className="formatted-preview-hint">
+          <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+          click to edit
+        </span>
+        <div className="cert-entries">
+          {entries.map((entry, i) => (
+            <div key={i} className="cert-entry">
+              <svg className="cert-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+                <path d="M9 12l2 2 4-4" />
+              </svg>
+              <span className="text-sm leading-relaxed text-primary/85">{entry.trim()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+}
+
 function SectionBlock({
   section,
   isActive,
@@ -644,25 +811,53 @@ function SectionBlock({
   onChange: (text: string) => void;
   onFocus: (editor: Editor) => void;
   onReset: () => void;
-  onRegenerate?: () => void;
+  onRegenerate?: (instruction?: string) => void;
   isRegenerating?: boolean;
   sectionRef: (el: HTMLDivElement | null) => void;
   useTemplateHeading?: boolean;
 }) {
+  const [showPrompt, setShowPrompt] = useState(false);
+  const [isEditingFormatted, setIsEditingFormatted] = useState(false);
   const badge = SOURCE_BADGE[section.source];
+  const isFormattable = FORMATTABLE_SECTIONS.has(section.id);
+  const wrapperRef = useRef<HTMLDivElement | null>(null);
+
+  const handleRegenClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onRegenerate) setShowPrompt((p) => !p);
+  };
+
+  const handleRegenSubmit = (instruction: string) => {
+    onRegenerate?.(instruction || undefined);
+    setShowPrompt(false);
+  };
+
+  useEffect(() => {
+    if (isRegenerating) setShowPrompt(false);
+  }, [isRegenerating]);
+
+  useEffect(() => {
+    if (!isEditingFormatted || !isFormattable) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setIsEditingFormatted(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isEditingFormatted, isFormattable]);
 
   const regenBtn = onRegenerate && (
     <button
-      onClick={(e) => {
-        e.stopPropagation();
-        onRegenerate();
-      }}
+      onClick={handleRegenClick}
       disabled={isRegenerating}
-      title="Regenerate this section"
+      title="Regenerate this section with optional instructions"
       className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold transition-all ${
         isRegenerating
           ? "bg-accent-light text-accent opacity-100"
-          : "bg-transparent text-secondary opacity-0 hover:bg-accent-light hover:text-accent group-hover:opacity-100"
+          : showPrompt
+            ? "bg-accent-light text-accent opacity-100"
+            : "bg-transparent text-secondary opacity-0 hover:bg-accent-light hover:text-accent group-hover:opacity-100"
       }`}
     >
       {isRegenerating ? (
@@ -679,9 +874,36 @@ function SectionBlock({
     </button>
   );
 
+  const headingActions = (
+    <span className="ml-auto flex items-center gap-1.5">
+      {isFormattable && isEditingFormatted && (
+        <button
+          onClick={() => setIsEditingFormatted(false)}
+          className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold text-brand opacity-100 transition-all hover:bg-brand-subtle"
+        >
+          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5" /></svg>
+          Done
+        </button>
+      )}
+      {regenBtn}
+      {isEdited && (
+        <button
+          onClick={onReset}
+          className="text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+        >
+          Reset
+        </button>
+      )}
+    </span>
+  );
+
   return (
     <div
-      ref={sectionRef}
+      ref={(el) => {
+        wrapperRef.current = el;
+        sectionRef(el);
+      }}
+      data-section={section.id}
       className={`doc-section group relative transition-colors ${
         useTemplateHeading
           ? ""
@@ -701,17 +923,7 @@ function SectionBlock({
               Edited
             </span>
           )}
-          <span className="ml-auto flex items-center gap-1.5">
-            {regenBtn}
-            {isEdited && (
-              <button
-                onClick={onReset}
-                className="text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
-              >
-                Reset
-              </button>
-            )}
-          </span>
+          {headingActions}
         </div>
       ) : (
         <div className="mb-1.5 flex items-center gap-2">
@@ -728,26 +940,33 @@ function SectionBlock({
               Edited
             </span>
           )}
-          <span className="ml-auto flex items-center gap-1.5">
-            {regenBtn}
-            {isEdited && (
-              <button
-                onClick={onReset}
-                className="text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
-              >
-                Reset
-              </button>
-            )}
-          </span>
+          {headingActions}
         </div>
       )}
 
-      <SectionEditor
-        key={`${section.id}-${resetKey}`}
-        initialContent={draftContent}
-        onChange={onChange}
-        onFocus={onFocus}
-      />
+      {isFormattable && !isEditingFormatted ? (
+        <FormattedPreview
+          sectionId={section.id}
+          content={draftContent}
+          onClick={() => setIsEditingFormatted(true)}
+        />
+      ) : (
+        <SectionEditor
+          key={`${section.id}-${resetKey}`}
+          initialContent={draftContent}
+          sectionId={section.id}
+          onChange={onChange}
+          onFocus={onFocus}
+        />
+      )}
+
+      {showPrompt && !isRegenerating && (
+        <RegenPrompt
+          onSubmit={handleRegenSubmit}
+          onCancel={() => setShowPrompt(false)}
+          isRegenerating={isRegenerating}
+        />
+      )}
     </div>
   );
 }
@@ -915,11 +1134,11 @@ export default function DraftReview({
   );
 
   const handleSectionRegenerate = useCallback(
-    (section: SectionDef) => {
+    (section: SectionDef, userInstruction?: string) => {
       if (!onRegenerateSection || regeneratingSection) return;
       const currentContent = getContent(edited, section);
       setRegeneratingSection(section.id);
-      onRegenerateSection(section.id, currentContent)
+      onRegenerateSection(section.id, currentContent, userInstruction)
         .then((newContent) => {
           setEdited((prev) => setContent(prev, section, newContent));
           setResetKeys((prev) => ({
@@ -958,7 +1177,7 @@ export default function DraftReview({
       onChange={(text) => handleSectionChange(section, text)}
       onFocus={(editor) => handleSectionFocus(section, editor)}
       onReset={() => handleReset(section)}
-      onRegenerate={onRegenerateSection ? () => handleSectionRegenerate(section) : undefined}
+      onRegenerate={onRegenerateSection ? (instruction?: string) => handleSectionRegenerate(section, instruction) : undefined}
       isRegenerating={regeneratingSection === section.id}
       sectionRef={(el) => {
         sectionRefs.current[section.id] = el;
@@ -1024,41 +1243,36 @@ export default function DraftReview({
 
             {/* Resume page */}
             <div className={`doc-page rounded bg-surface ${tplCls}`}>
-              <div className="px-12 py-10 sm:px-16 sm:py-12">
-                {/* Template header for executive/creative */}
-                {(templateStyle === "executive" || templateStyle === "creative") && (
-                  <div className="tpl-header">
-                    <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">
-                      Tailored Resume
-                    </div>
+              {isModern ? (
+                <div className="tpl-grid">
+                  <div className="tpl-sidebar space-y-5">
+                    {sidebarSections.map(renderSectionBlock)}
                   </div>
-                )}
-
-                {/* Classic centered header */}
-                {templateStyle === "classic" && (
-                  <div className="tpl-header">
-                    <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
-                      Tailored Resume
-                    </div>
+                  <div className="tpl-main space-y-6">
+                    {mainSections.map(renderSectionBlock)}
                   </div>
-                )}
-
-                {/* Modern two-column layout: sidebar (left) + main (right) */}
-                {isModern ? (
-                  <div className="tpl-grid">
-                    <div className="tpl-sidebar space-y-5">
-                      {sidebarSections.map(renderSectionBlock)}
+                </div>
+              ) : (
+                <div className="px-12 py-10 sm:px-16 sm:py-12">
+                  {(templateStyle === "executive" || templateStyle === "creative") && (
+                    <div className="tpl-header">
+                      <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">
+                        Tailored Resume
+                      </div>
                     </div>
-                    <div className="space-y-6">
-                      {mainSections.map(renderSectionBlock)}
+                  )}
+                  {templateStyle === "classic" && (
+                    <div className="tpl-header">
+                      <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
+                        Tailored Resume
+                      </div>
                     </div>
-                  </div>
-                ) : (
+                  )}
                   <div className="space-y-7">
                     {resumeSections.map(renderSectionBlock)}
                   </div>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
             {/* Page break */}

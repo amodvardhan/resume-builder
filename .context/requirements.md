@@ -54,3 +54,20 @@
   * [ ] UI features a "History" sidebar showing past applications.
   * [ ] UI includes a "Use as Reference" button on past applications.
   * [ ] Backend LangChain pipeline injects the referenced application's data as a `SystemMessage` to guide the new tailoring process.
+
+## REQ-008: Template Gallery Styling Consistency
+* **Description:** When the user selects a template style from the gallery (classic, modern, minimal, executive, creative), the visual presentation must be consistent across every surface: Draft Review page, Application Ready page, and the downloadable `.docx` file.
+* **Acceptance Criteria:**
+  * [ ] The "Application Ready" (done) page renders the resume preview using the same template-aware layout as the Draft Review page (e.g., two-column grid for "modern", branded header for "executive"/"creative").
+  * [ ] The modern template uses a 30/70 sidebar-to-main ratio on all surfaces (CSS preview and `.docx`).
+  * [ ] The modern template sidebar is flush-left with zero margin, no border-radius, and spans the full document height in both the CSS preview and the generated `.docx`.
+  * [ ] The downloadable `.docx` for the modern template has zero left page margin, sidebar cell with no left padding (background fills to edge), and explicit 30/70 column widths.
+
+## REQ-009: WYSIWYG Section Formatting Consistency
+* **Description:** Skills, education, and certifications must render with identical visual treatment across the Draft Review screen, Application Ready screen, and the downloadable `.docx` — WYSIWYG principle.
+* **Acceptance Criteria:**
+  * [ ] Skills render as pill badges on both the Draft Review and Application Ready screens.
+  * [ ] Education entries separated by `;` or `\n` display as distinct blocks with visual dividers.
+  * [ ] Certifications separated by `;` or `\n` display as individual entries with shield icons.
+  * [ ] The Draft Review screen uses a click-to-edit toggle: formatted preview by default, TipTap editor on click.
+  * [ ] The downloadable `.docx` splits education and certifications on `;` and `\n` into separate paragraphs.
