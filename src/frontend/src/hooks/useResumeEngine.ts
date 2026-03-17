@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getUser,
   getUserResumes,
+  regenerateSectionApi,
   tailorConfirm,
   tailorPreview,
   tailorResume,
@@ -10,6 +11,8 @@ import {
   uploadTemplate,
 } from "../api/client";
 import type {
+  RegenerateSectionRequest,
+  RegenerateSectionResponse,
   ResumeListItem,
   ResumeUploadResponse,
   TailorConfirmRequest,
@@ -144,5 +147,11 @@ export function useTailorConfirm() {
         queryKey: resumeKeys.applications(variables.user_id),
       });
     },
+  });
+}
+
+export function useRegenerateSection() {
+  return useMutation<RegenerateSectionResponse, Error, RegenerateSectionRequest>({
+    mutationFn: regenerateSectionApi,
   });
 }

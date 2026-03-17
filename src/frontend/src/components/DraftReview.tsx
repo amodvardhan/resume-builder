@@ -17,42 +17,105 @@ import type { TailorPreviewResponse } from "../types/api";
    Types
    ═══════════════════════════════════════════════════════════════════════ */
 
+type TemplateStyle = "classic" | "modern" | "minimal" | "executive" | "creative";
+
 interface DraftReviewProps {
   draft: TailorPreviewResponse;
+  templateStyle?: TemplateStyle;
   onConfirm: (edited: TailorPreviewResponse) => void;
   onBack: () => void;
+  onRegenerate?: () => void;
+  onRegenerateSection?: (sectionId: string, currentContent: string) => Promise<string>;
   isConfirming: boolean;
+  isRegenerating?: boolean;
   error?: string | null;
 }
 
 type SourceType = "extracted" | "tailored" | "generated";
 
 interface SectionDef {
-  key: keyof TailorPreviewResponse;
+  id: string;
   label: string;
   source: SourceType;
+  experienceIndex?: number;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Constants
+   Dynamic section builder
    ═══════════════════════════════════════════════════════════════════════ */
 
-const RESUME_SECTIONS: SectionDef[] = [
-  { key: "summary", label: "Professional Summary", source: "tailored" },
-  { key: "experience_1", label: "Experience — Role 1", source: "extracted" },
-  { key: "experience_2", label: "Experience — Role 2", source: "extracted" },
-  { key: "experience_3", label: "Experience — Role 3", source: "extracted" },
-  { key: "skills", label: "Skills", source: "extracted" },
-  { key: "education", label: "Education", source: "extracted" },
-];
+function buildResumeSections(draft: TailorPreviewResponse): SectionDef[] {
+  const sections: SectionDef[] = [
+    { id: "summary", label: "Professional Summary", source: "tailored" },
+  ];
+
+  (draft.experiences || []).forEach((_, i) => {
+    sections.push({
+      id: `experience_${i}`,
+      label: `Experience — Role ${i + 1}`,
+      source: "tailored",
+      experienceIndex: i,
+    });
+  });
+
+  sections.push(
+    { id: "skills", label: "Skills", source: "extracted" },
+    { id: "education", label: "Education", source: "extracted" },
+  );
+
+  if (draft.certifications) {
+    sections.push({
+      id: "certifications",
+      label: "Certifications",
+      source: "extracted",
+    });
+  }
+
+  return sections;
+}
 
 const COVER_LETTER_SECTION: SectionDef = {
-  key: "cover_letter",
+  id: "cover_letter",
   label: "Cover Letter",
   source: "generated",
 };
 
-const ALL_SECTIONS = [...RESUME_SECTIONS, COVER_LETTER_SECTION];
+function getContent(data: TailorPreviewResponse, section: SectionDef): string {
+  if (section.experienceIndex !== undefined) {
+    return data.experiences[section.experienceIndex] || "";
+  }
+  switch (section.id) {
+    case "summary":
+      return data.summary;
+    case "skills":
+      return data.skills;
+    case "education":
+      return data.education;
+    case "certifications":
+      return data.certifications;
+    case "cover_letter":
+      return data.cover_letter;
+    default:
+      return "";
+  }
+}
+
+function setContent(
+  prev: TailorPreviewResponse,
+  section: SectionDef,
+  text: string,
+): TailorPreviewResponse {
+  if (section.experienceIndex !== undefined) {
+    const newExps = [...prev.experiences];
+    newExps[section.experienceIndex] = text;
+    return { ...prev, experiences: newExps };
+  }
+  return { ...prev, [section.id]: text };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   Source badge / accent config
+   ═══════════════════════════════════════════════════════════════════════ */
 
 const SOURCE_BADGE: Record<SourceType, { text: string; cls: string }> = {
   extracted: { text: "From Resume", cls: "bg-brand-subtle text-brand" },
@@ -84,6 +147,11 @@ function extractText(editor: Editor): string {
     editor.state.doc.content.size,
     "\n\n",
   );
+}
+
+function formatOriginalText(raw: string): string[] {
+  if (!raw) return [];
+  return raw.split("\n").filter((line) => line.trim() !== "");
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -255,7 +323,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
 
   return (
     <div className="flex items-center gap-0.5 border-b border-border-muted bg-surface px-4 py-1">
-      {/* Undo / Redo */}
       {btn(
         false,
         () => editor?.chain().focus().undo().run(),
@@ -270,7 +337,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       )}
       {sep}
 
-      {/* Text style */}
       {btn(
         !!editor?.isActive("bold"),
         () => editor?.chain().focus().toggleBold().run(),
@@ -297,7 +363,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       )}
       {sep}
 
-      {/* Headings */}
       {btn(
         !!editor?.isActive("heading", { level: 2 }),
         () => editor?.chain().focus().toggleHeading({ level: 2 }).run(),
@@ -312,7 +377,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       )}
       {sep}
 
-      {/* Lists */}
       {btn(
         !!editor?.isActive("bulletList"),
         () => editor?.chain().focus().toggleBulletList().run(),
@@ -327,7 +391,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
       )}
       {sep}
 
-      {/* Alignment */}
       {btn(
         !!isLeft,
         () => editor?.chain().focus().setTextAlign("left").run(),
@@ -347,7 +410,6 @@ function Toolbar({ editor }: { editor: Editor | null }) {
         "Align Right",
       )}
 
-      {/* Hint when no editor */}
       {none && (
         <>
           {sep}
@@ -361,10 +423,24 @@ function Toolbar({ editor }: { editor: Editor | null }) {
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Breadcrumb — progress indicator embedded in the top chrome
+   Breadcrumb — progress indicator with compare + regenerate toggles
    ═══════════════════════════════════════════════════════════════════════ */
 
-function Breadcrumb({ hasChanges }: { hasChanges: boolean }) {
+function Breadcrumb({
+  hasChanges,
+  showCompare,
+  onToggleCompare,
+  hasOriginal,
+  onRegenerate,
+  isRegenerating,
+}: {
+  hasChanges: boolean;
+  showCompare: boolean;
+  onToggleCompare: () => void;
+  hasOriginal: boolean;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
+}) {
   const chevron = (
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -389,11 +465,69 @@ function Breadcrumb({ hasChanges }: { hasChanges: boolean }) {
         {chevron}
         <span>Final Document</span>
       </div>
-      {hasChanges && (
-        <span className="rounded-full bg-accent-light px-2.5 py-0.5 text-[10px] font-semibold text-accent">
-          Unsaved edits
-        </span>
-      )}
+
+      <div className="flex items-center gap-2">
+        {hasChanges && (
+          <span className="rounded-full bg-accent-light px-2.5 py-0.5 text-[10px] font-semibold text-accent">
+            Unsaved edits
+          </span>
+        )}
+
+        {hasOriginal && (
+          <button
+            onClick={onToggleCompare}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-medium transition-colors ${
+              showCompare
+                ? "bg-brand/10 text-brand"
+                : "text-secondary hover:bg-muted hover:text-primary"
+            }`}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="3" width="7" height="18" rx="1" />
+              <rect x="14" y="3" width="7" height="18" rx="1" />
+            </svg>
+            {showCompare ? "Hide Original" : "Compare with Original"}
+          </button>
+        )}
+
+        {onRegenerate && (
+          <button
+            onClick={onRegenerate}
+            disabled={isRegenerating}
+            className="flex items-center gap-1.5 rounded-lg bg-accent-light px-3 py-1.5 text-[11px] font-semibold text-accent transition-colors hover:bg-accent/10 disabled:opacity-40"
+          >
+            {isRegenerating ? (
+              <MiniSpinner />
+            ) : (
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M21 2v6h-6" />
+                <path d="M3 12a9 9 0 0115-6.7L21 8" />
+                <path d="M3 22v-6h6" />
+                <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+              </svg>
+            )}
+            {isRegenerating ? "Regenerating…" : "Regenerate"}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -403,23 +537,31 @@ function Breadcrumb({ hasChanges }: { hasChanges: boolean }) {
    ═══════════════════════════════════════════════════════════════════════ */
 
 function SectionNav({
+  resumeSections,
   activeSection,
   edited,
   draft,
   onNavigate,
 }: {
+  resumeSections: SectionDef[];
   activeSection: string | null;
   edited: TailorPreviewResponse;
   draft: TailorPreviewResponse;
-  onNavigate: (key: string) => void;
+  onNavigate: (id: string) => void;
 }) {
+  const allSections = useMemo(
+    () => [...resumeSections, COVER_LETTER_SECTION],
+    [resumeSections],
+  );
+
   const navBtn = (section: SectionDef) => {
-    const isActive = activeSection === section.key;
-    const isEdited = edited[section.key] !== draft[section.key];
+    const isActive = activeSection === section.id;
+    const isEdited =
+      getContent(edited, section) !== getContent(draft, section);
     return (
       <button
-        key={section.key}
-        onClick={() => onNavigate(section.key)}
+        key={section.id}
+        onClick={() => onNavigate(section.id)}
         className={`flex w-full items-center gap-2 rounded-lg px-3 py-1.5 text-left text-[11px] transition-colors ${
           isActive
             ? "bg-brand-subtle font-medium text-brand"
@@ -439,7 +581,7 @@ function SectionNav({
       <p className="mb-2.5 text-[9px] font-bold uppercase tracking-[0.12em] text-secondary/50">
         Resume
       </p>
-      <div className="space-y-0.5">{RESUME_SECTIONS.map(navBtn)}</div>
+      <div className="space-y-0.5">{resumeSections.map(navBtn)}</div>
 
       <div className="my-3 border-t border-border-light" />
 
@@ -448,7 +590,6 @@ function SectionNav({
       </p>
       {navBtn(COVER_LETTER_SECTION)}
 
-      {/* Source legend */}
       <div className="mt-8 space-y-1.5">
         <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-secondary/50">
           Source Legend
@@ -463,6 +604,15 @@ function SectionNav({
             </span>
           </div>
         ))}
+      </div>
+
+      <div className="mt-6 rounded-lg border border-border-light bg-muted p-3">
+        <p className="text-[9px] font-bold uppercase tracking-[0.12em] text-secondary/50 mb-1.5">
+          Sections
+        </p>
+        <p className="text-[10px] text-secondary leading-relaxed">
+          {allSections.length} sections detected from your resume
+        </p>
       </div>
     </aside>
   );
@@ -481,7 +631,10 @@ function SectionBlock({
   onChange,
   onFocus,
   onReset,
+  onRegenerate,
+  isRegenerating,
   sectionRef,
+  useTemplateHeading,
 }: {
   section: SectionDef;
   isActive: boolean;
@@ -491,45 +644,106 @@ function SectionBlock({
   onChange: (text: string) => void;
   onFocus: (editor: Editor) => void;
   onReset: () => void;
+  onRegenerate?: () => void;
+  isRegenerating?: boolean;
   sectionRef: (el: HTMLDivElement | null) => void;
+  useTemplateHeading?: boolean;
 }) {
   const badge = SOURCE_BADGE[section.source];
+
+  const regenBtn = onRegenerate && (
+    <button
+      onClick={(e) => {
+        e.stopPropagation();
+        onRegenerate();
+      }}
+      disabled={isRegenerating}
+      title="Regenerate this section"
+      className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[9px] font-semibold transition-all ${
+        isRegenerating
+          ? "bg-accent-light text-accent opacity-100"
+          : "bg-transparent text-secondary opacity-0 hover:bg-accent-light hover:text-accent group-hover:opacity-100"
+      }`}
+    >
+      {isRegenerating ? (
+        <MiniSpinner />
+      ) : (
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M21 2v6h-6" />
+          <path d="M3 12a9 9 0 0115-6.7L21 8" />
+          <path d="M3 22v-6h6" />
+          <path d="M21 12a9 9 0 01-15 6.7L3 16" />
+        </svg>
+      )}
+      {isRegenerating ? "Regenerating…" : "Regenerate"}
+    </button>
+  );
 
   return (
     <div
       ref={sectionRef}
-      className={`doc-section group border-l-[3px] pl-5 transition-colors ${
-        isActive ? "border-l-brand" : SOURCE_ACCENT[section.source]
-      }`}
+      className={`doc-section group relative transition-colors ${
+        useTemplateHeading
+          ? ""
+          : `border-l-[3px] pl-5 ${isActive ? "border-l-brand" : SOURCE_ACCENT[section.source]}`
+      } ${isRegenerating ? "opacity-50 pointer-events-none" : ""}`}
     >
-      {/* Section heading row */}
-      <div className="mb-1.5 flex items-center gap-2">
-        <h3 className="text-[10px] font-bold uppercase tracking-[0.08em] text-secondary/70">
-          {section.label}
-        </h3>
-        <span
-          className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${badge.cls}`}
-        >
-          {badge.text}
-        </span>
-        {isEdited && (
-          <span className="rounded bg-accent-light px-1.5 py-0.5 text-[9px] font-semibold text-accent">
-            Edited
-          </span>
-        )}
-        {isEdited && (
-          <button
-            onClick={onReset}
-            className="ml-auto text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+      {useTemplateHeading ? (
+        <div className="tpl-section-heading flex items-center gap-2">
+          <span>{section.label}</span>
+          <span
+            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold opacity-60 ${badge.cls}`}
           >
-            Reset
-          </button>
-        )}
-      </div>
+            {badge.text}
+          </span>
+          {isEdited && (
+            <span className="rounded bg-accent-light px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+              Edited
+            </span>
+          )}
+          <span className="ml-auto flex items-center gap-1.5">
+            {regenBtn}
+            {isEdited && (
+              <button
+                onClick={onReset}
+                className="text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+              >
+                Reset
+              </button>
+            )}
+          </span>
+        </div>
+      ) : (
+        <div className="mb-1.5 flex items-center gap-2">
+          <h3 className="text-[10px] font-bold uppercase tracking-[0.08em] text-secondary/70">
+            {section.label}
+          </h3>
+          <span
+            className={`rounded px-1.5 py-0.5 text-[9px] font-semibold ${badge.cls}`}
+          >
+            {badge.text}
+          </span>
+          {isEdited && (
+            <span className="rounded bg-accent-light px-1.5 py-0.5 text-[9px] font-semibold text-accent">
+              Edited
+            </span>
+          )}
+          <span className="ml-auto flex items-center gap-1.5">
+            {regenBtn}
+            {isEdited && (
+              <button
+                onClick={onReset}
+                className="text-[10px] font-medium text-secondary opacity-0 transition-opacity hover:text-primary group-hover:opacity-100"
+              >
+                Reset
+              </button>
+            )}
+          </span>
+        </div>
+      )}
 
-      {/* TipTap editor */}
       <SectionEditor
-        key={`${section.key}-${resetKey}`}
+        key={`${section.id}-${resetKey}`}
         initialContent={draftContent}
         onChange={onChange}
         onFocus={onFocus}
@@ -539,94 +753,259 @@ function SectionBlock({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
+   Comparison Panel — shows original resume text alongside the editor
+   ═══════════════════════════════════════════════════════════════════════ */
+
+function ComparisonPanel({
+  originalText,
+  onClose,
+}: {
+  originalText: string;
+  onClose: () => void;
+}) {
+  const lines = useMemo(() => formatOriginalText(originalText), [originalText]);
+
+  return (
+    <aside className="w-80 shrink-0 overflow-y-auto border-l border-border-light bg-surface xl:w-96">
+      <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border-light bg-surface/95 px-4 py-2.5 backdrop-blur-sm">
+        <div className="flex items-center gap-2">
+          <div className="flex h-5 w-5 items-center justify-center rounded bg-brand-subtle">
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-brand"
+            >
+              <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+              <polyline points="14,2 14,8 20,8" />
+            </svg>
+          </div>
+          <span className="text-[11px] font-semibold text-primary">
+            Original Resume
+          </span>
+        </div>
+        <button
+          onClick={onClose}
+          className="rounded p-1 text-secondary transition-colors hover:bg-muted hover:text-primary"
+        >
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+
+      <div className="px-4 py-4">
+        <div className="space-y-0.5 text-[12px] leading-relaxed text-primary/80">
+          {lines.map((line, i) => {
+            const isSectionHeader = line.startsWith("[SECTION:");
+            const isRoleHeader = line.startsWith("[ROLE:");
+
+            if (isSectionHeader) {
+              const label = line.replace("[SECTION:", "").replace("]", "").trim();
+              return (
+                <div key={i} className="mt-4 first:mt-0">
+                  <div className="mb-1 text-[10px] font-bold uppercase tracking-wider text-brand">
+                    {label}
+                  </div>
+                </div>
+              );
+            }
+
+            if (isRoleHeader) {
+              const label = line.replace("[ROLE:", "").replace("]", "").trim();
+              return (
+                <div
+                  key={i}
+                  className="mt-2 text-[11px] font-semibold text-primary"
+                >
+                  {label}
+                </div>
+              );
+            }
+
+            const isBullet =
+              line.startsWith("•") ||
+              line.startsWith("-") ||
+              line.startsWith("–");
+
+            return (
+              <p
+                key={i}
+                className={isBullet ? "pl-3 text-secondary" : "text-primary/80"}
+              >
+                {line}
+              </p>
+            );
+          })}
+        </div>
+      </div>
+    </aside>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
    DraftReview — the Document Studio
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function DraftReview({
   draft,
+  templateStyle = "classic",
   onConfirm,
   onBack,
+  onRegenerate,
+  onRegenerateSection,
   isConfirming,
+  isRegenerating,
   error,
 }: DraftReviewProps) {
   const [edited, setEdited] = useState<TailorPreviewResponse>({ ...draft });
   const [activeEditor, setActiveEditor] = useState<Editor | null>(null);
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [resetKeys, setResetKeys] = useState<Record<string, number>>({});
+  const [showCompare, setShowCompare] = useState(false);
+  const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null);
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
-  /* Stable per-section callbacks */
-  const changeHandlers = useMemo(
-    () =>
-      Object.fromEntries(
-        ALL_SECTIONS.map((s) => [
-          s.key,
-          (text: string) =>
-            setEdited((prev) => ({ ...prev, [s.key]: text })),
-        ]),
-      ),
+  const resumeSections = useMemo(() => buildResumeSections(draft), [draft]);
+  const allSections = useMemo(
+    () => [...resumeSections, COVER_LETTER_SECTION],
+    [resumeSections],
+  );
+
+  useEffect(() => {
+    setEdited({ ...draft });
+    setResetKeys({});
+  }, [draft]);
+
+  const handleSectionChange = useCallback(
+    (section: SectionDef, text: string) => {
+      setEdited((prev) => setContent(prev, section, text));
+    },
     [],
   );
 
-  const focusHandlers = useMemo(
-    () =>
-      Object.fromEntries(
-        ALL_SECTIONS.map((s) => [
-          s.key,
-          (editor: Editor) => {
-            setActiveEditor(editor);
-            setActiveSection(s.key);
-          },
-        ]),
-      ),
+  const handleSectionFocus = useCallback(
+    (section: SectionDef, editor: Editor) => {
+      setActiveEditor(editor);
+      setActiveSection(section.id);
+    },
     [],
   );
 
   const handleReset = useCallback(
-    (key: keyof TailorPreviewResponse) => {
-      setEdited((prev) => ({ ...prev, [key]: draft[key] }));
-      setResetKeys((prev) => ({ ...prev, [key]: (prev[key] || 0) + 1 }));
+    (section: SectionDef) => {
+      setEdited((prev) => setContent(prev, section, getContent(draft, section)));
+      setResetKeys((prev) => ({
+        ...prev,
+        [section.id]: (prev[section.id] || 0) + 1,
+      }));
     },
     [draft],
   );
 
-  const scrollToSection = useCallback((key: string) => {
-    sectionRefs.current[key]?.scrollIntoView({
+  const handleSectionRegenerate = useCallback(
+    (section: SectionDef) => {
+      if (!onRegenerateSection || regeneratingSection) return;
+      const currentContent = getContent(edited, section);
+      setRegeneratingSection(section.id);
+      onRegenerateSection(section.id, currentContent)
+        .then((newContent) => {
+          setEdited((prev) => setContent(prev, section, newContent));
+          setResetKeys((prev) => ({
+            ...prev,
+            [section.id]: (prev[section.id] || 0) + 1,
+          }));
+        })
+        .finally(() => setRegeneratingSection(null));
+    },
+    [onRegenerateSection, regeneratingSection, edited],
+  );
+
+  const scrollToSection = useCallback((id: string) => {
+    sectionRefs.current[id]?.scrollIntoView({
       behavior: "smooth",
       block: "start",
     });
   }, []);
 
-  const hasChanges = ALL_SECTIONS.some((s) => edited[s.key] !== draft[s.key]);
+  const hasChanges = allSections.some(
+    (s) => getContent(edited, s) !== getContent(draft, s),
+  );
+
+  const hasOriginal = !!draft.original_resume_text;
+
+  const useTpl = templateStyle !== "classic" || true;
 
   const renderSectionBlock = (section: SectionDef) => (
     <SectionBlock
-      key={section.key}
+      key={section.id}
       section={section}
-      isActive={activeSection === section.key}
-      isEdited={edited[section.key] !== draft[section.key]}
-      resetKey={resetKeys[section.key] || 0}
-      draftContent={draft[section.key]}
-      onChange={changeHandlers[section.key]}
-      onFocus={focusHandlers[section.key]}
-      onReset={() => handleReset(section.key)}
+      isActive={activeSection === section.id}
+      isEdited={getContent(edited, section) !== getContent(draft, section)}
+      resetKey={resetKeys[section.id] || 0}
+      draftContent={getContent(edited, section)}
+      onChange={(text) => handleSectionChange(section, text)}
+      onFocus={(editor) => handleSectionFocus(section, editor)}
+      onReset={() => handleReset(section)}
+      onRegenerate={onRegenerateSection ? () => handleSectionRegenerate(section) : undefined}
+      isRegenerating={regeneratingSection === section.id}
       sectionRef={(el) => {
-        sectionRefs.current[section.key] = el;
+        sectionRefs.current[section.id] = el;
       }}
+      useTemplateHeading={useTpl}
     />
   );
 
+  const tplCls = `tpl-${templateStyle}`;
+
+  const mainSections = resumeSections.filter(
+    (s) =>
+      s.id === "summary" || s.experienceIndex !== undefined,
+  );
+  const sidebarSections = resumeSections.filter(
+    (s) =>
+      s.id !== "summary" && s.experienceIndex === undefined,
+  );
+  const isModern = templateStyle === "modern";
+
+  const templateLabel: Record<TemplateStyle, string> = {
+    classic: "Classic Professional",
+    modern: "Modern Two-Column",
+    minimal: "Minimalist ATS-Friendly",
+    executive: "Executive Brief",
+    creative: "Creative Portfolio",
+  };
+
   return (
     <div className="flex flex-1 flex-col min-h-0">
-      {/* ── Top chrome: breadcrumb + toolbar ────────────────────── */}
+      {/* Top chrome: breadcrumb + toolbar */}
       <div className="sticky top-0 z-20 shadow-sm">
-        <Breadcrumb hasChanges={hasChanges} />
+        <Breadcrumb
+          hasChanges={hasChanges}
+          showCompare={showCompare}
+          onToggleCompare={() => setShowCompare((p) => !p)}
+          hasOriginal={hasOriginal}
+          onRegenerate={onRegenerate}
+          isRegenerating={isRegenerating}
+        />
         <Toolbar editor={activeEditor} />
       </div>
 
-      {/* ── Main body: sidebar + canvas ─────────────────────────── */}
+      {/* Main body: sidebar + canvas + comparison panel */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         <SectionNav
+          resumeSections={resumeSections}
           activeSection={activeSection}
           edited={edited}
           draft={draft}
@@ -636,36 +1015,82 @@ export default function DraftReview({
         {/* Document canvas */}
         <main className="flex-1 overflow-y-auto bg-[#eaecf0]">
           <div className="mx-auto max-w-[860px] px-4 py-8 sm:px-8">
-            {/* ── Resume page ──────────────────────────────────── */}
-            <div className="doc-page rounded bg-surface">
-              <div className="space-y-7 px-12 py-10 sm:px-16 sm:py-12">
-                {RESUME_SECTIONS.map(renderSectionBlock)}
+            {/* Template badge */}
+            <div className="mb-3 flex items-center justify-center gap-2">
+              <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-semibold text-secondary shadow-sm">
+                Format: {templateLabel[templateStyle]}
+              </span>
+            </div>
+
+            {/* Resume page */}
+            <div className={`doc-page rounded bg-surface ${tplCls}`}>
+              <div className="px-12 py-10 sm:px-16 sm:py-12">
+                {/* Template header for executive/creative */}
+                {(templateStyle === "executive" || templateStyle === "creative") && (
+                  <div className="tpl-header">
+                    <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">
+                      Tailored Resume
+                    </div>
+                  </div>
+                )}
+
+                {/* Classic centered header */}
+                {templateStyle === "classic" && (
+                  <div className="tpl-header">
+                    <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
+                      Tailored Resume
+                    </div>
+                  </div>
+                )}
+
+                {/* Modern two-column layout: sidebar (left) + main (right) */}
+                {isModern ? (
+                  <div className="tpl-grid">
+                    <div className="tpl-sidebar space-y-5">
+                      {sidebarSections.map(renderSectionBlock)}
+                    </div>
+                    <div className="space-y-6">
+                      {mainSections.map(renderSectionBlock)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-7">
+                    {resumeSections.map(renderSectionBlock)}
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* ── Page break ───────────────────────────────────── */}
+            {/* Page break */}
             <div className="my-5 flex items-center justify-center">
               <div className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-secondary/40">
                 <div className="h-px w-10 bg-secondary/20" />
-                Page 2 — Cover Letter
+                Cover Letter
                 <div className="h-px w-10 bg-secondary/20" />
               </div>
             </div>
 
-            {/* ── Cover letter page ────────────────────────────── */}
-            <div className="doc-page rounded bg-surface">
+            {/* Cover letter page */}
+            <div className={`doc-page rounded bg-surface ${tplCls}`}>
               <div className="px-12 py-10 sm:px-16 sm:py-12">
                 {renderSectionBlock(COVER_LETTER_SECTION)}
               </div>
             </div>
 
-            {/* Bottom spacer */}
             <div className="h-8" />
           </div>
         </main>
+
+        {/* Comparison panel (slides in from right) */}
+        {showCompare && hasOriginal && (
+          <ComparisonPanel
+            originalText={draft.original_resume_text}
+            onClose={() => setShowCompare(false)}
+          />
+        )}
       </div>
 
-      {/* ── Bottom action bar ───────────────────────────────────── */}
+      {/* Bottom action bar */}
       <div className="shrink-0 border-t border-border-muted bg-surface">
         <div className="mx-auto flex max-w-[860px] items-center justify-between px-6 py-3">
           <button
@@ -718,13 +1143,38 @@ export default function DraftReview({
 }
 
 /* ═══════════════════════════════════════════════════════════════════════
-   Spinner
+   Spinner variants
    ═══════════════════════════════════════════════════════════════════════ */
 
 function Spinner() {
   return (
     <svg
       className="h-4 w-4 animate-spin"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+      />
+    </svg>
+  );
+}
+
+function MiniSpinner() {
+  return (
+    <svg
+      className="h-3 w-3 animate-spin"
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"

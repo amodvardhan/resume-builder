@@ -73,7 +73,7 @@ export interface ResumeListItem {
 export interface TailorRequest {
   user_id: string;
   resume_id: string;
-  template_id: string;
+  template_id?: string | null;
   job_title: string;
   organization: string;
   job_description_html: string;
@@ -84,6 +84,7 @@ export interface TailorResponse {
   application_id: string;
   tailored_resume_url: string;
   cover_letter_text: string;
+  cover_letter_url: string;
 }
 
 // Human-in-the-loop: Preview → Review → Confirm
@@ -91,7 +92,7 @@ export interface TailorResponse {
 export interface TailorPreviewRequest {
   user_id: string;
   resume_id: string;
-  template_id: string;
+  template_id?: string | null;
   job_title: string;
   organization: string;
   job_description_html: string;
@@ -100,28 +101,28 @@ export interface TailorPreviewRequest {
 
 export interface TailorPreviewResponse {
   summary: string;
-  experience_1: string;
-  experience_2: string;
-  experience_3: string;
+  experiences: string[];
   skills: string;
   education: string;
+  certifications: string;
   cover_letter: string;
+  original_resume_text: string;
+  [key: string]: string | string[];
 }
 
 export interface TailorConfirmRequest {
   user_id: string;
   resume_id: string;
-  template_id: string;
+  template_id?: string | null;
   job_title: string;
   organization: string;
   job_description_html: string;
   cover_letter_sentiment?: string;
   summary: string;
-  experience_1: string;
-  experience_2: string;
-  experience_3: string;
+  experiences: string[];
   skills: string;
   education: string;
+  certifications: string;
   cover_letter: string;
 }
 
@@ -129,6 +130,25 @@ export interface TailorConfirmResponse {
   application_id: string;
   tailored_resume_url: string;
   cover_letter_text: string;
+  cover_letter_url: string;
+}
+
+// Per-section regeneration
+
+export interface RegenerateSectionRequest {
+  user_id: string;
+  resume_id: string;
+  section_id: string;
+  current_content: string;
+  job_title: string;
+  organization: string;
+  job_description_html: string;
+  cover_letter_sentiment?: string;
+}
+
+export interface RegenerateSectionResponse {
+  section_id: string;
+  content: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -157,7 +177,7 @@ export interface Application {
   id: string;
   user_id: string;
   resume_id: string | null;
-  template_id: string;
+  template_id: string | null;
   job_title: string;
   organization: string;
   job_description_html: string;

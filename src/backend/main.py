@@ -27,6 +27,7 @@ from src.backend.services.resume_parser import (
 from src.backend.services.tailor_engine import (
     finalize_document,
     generate_draft,
+    regenerate_section,
     tailor_resume,
 )
 
@@ -85,6 +86,28 @@ async def _create_tables() -> None:
                 "REFERENCES applications(id) ON DELETE SET NULL"
             ))
             logger.info("Migrated: added reference_application_id column to applications table")
+
+    # One-time re-parse: refresh extracted_text for all resumes whose stored
+    # text was produced by an older parser that missed SDT/form-field content.
+    async with AsyncSession(engine) as session:
+        result = await session.execute(select(Resume))
+        resumes = result.scalars().all()
+        refreshed = 0
+        for resume in resumes:
+            fp = Path(resume.file_path)
+            if not fp.exists():
+                continue
+            try:
+                fresh_text = extract_resume_text(fp, resume.file_type)
+            except Exception:
+                logger.warning("Re-parse failed for %s, skipping", resume.id)
+                continue
+            if fresh_text and len(fresh_text) > len(resume.extracted_text or ""):
+                resume.extracted_text = fresh_text
+                refreshed += 1
+        if refreshed:
+            await session.commit()
+            logger.info("Re-parsed %d resume(s) with improved parser", refreshed)
 
 
 # ---------------------------------------------------------------------------
@@ -151,7 +174,7 @@ class TemplateResponse(BaseModel):
 class TailorRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
-    template_id: uuid.UUID
+    template_id: uuid.UUID | None = None
     job_title: str
     organization: str
     job_description_html: str
@@ -162,12 +185,13 @@ class TailorResponse(BaseModel):
     application_id: uuid.UUID
     tailored_resume_url: str
     cover_letter_text: str
+    cover_letter_url: str = ""
 
 
 class TailorPreviewRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
-    template_id: uuid.UUID
+    template_id: uuid.UUID | None = None
     job_title: str
     organization: str
     job_description_html: str
@@ -176,28 +200,27 @@ class TailorPreviewRequest(BaseModel):
 
 class TailorPreviewResponse(BaseModel):
     summary: str
-    experience_1: str
-    experience_2: str
-    experience_3: str
+    experiences: list[str]
     skills: str
     education: str
+    certifications: str = ""
     cover_letter: str
+    original_resume_text: str = ""
 
 
 class TailorConfirmRequest(BaseModel):
     user_id: uuid.UUID
     resume_id: uuid.UUID
-    template_id: uuid.UUID
+    template_id: uuid.UUID | None = None
     job_title: str
     organization: str
     job_description_html: str
     cover_letter_sentiment: str | None = None
     summary: str
-    experience_1: str
-    experience_2: str
-    experience_3: str
+    experiences: list[str]
     skills: str
     education: str
+    certifications: str = ""
     cover_letter: str
 
 
@@ -205,6 +228,23 @@ class TailorConfirmResponse(BaseModel):
     application_id: uuid.UUID
     tailored_resume_url: str
     cover_letter_text: str
+    cover_letter_url: str = ""
+
+
+class RegenerateSectionRequest(BaseModel):
+    user_id: uuid.UUID
+    resume_id: uuid.UUID
+    section_id: str
+    current_content: str
+    job_title: str
+    organization: str
+    job_description_html: str
+    cover_letter_sentiment: str | None = None
+
+
+class RegenerateSectionResponse(BaseModel):
+    section_id: str
+    content: str
 
 
 class CloneRequest(BaseModel):
@@ -492,16 +532,13 @@ async def tailor(
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    template = await session.get(Template, payload.template_id)
-    if template is None:
-        raise HTTPException(status_code=404, detail="Template not found")
-
-    template_path = Path(template.file_path)
-    if not template_path.exists():
-        raise HTTPException(
-            status_code=500,
-            detail="Template file missing from storage",
-        )
+    template_path: Path | None = None
+    if payload.template_id is not None:
+        template = await session.get(Template, payload.template_id)
+        if template is not None:
+            tp = Path(template.file_path)
+            if tp.exists():
+                template_path = tp
 
     core_skills: list[str] = user.core_skills if isinstance(user.core_skills, list) else []
     jd_plain_text = html_to_plain_text(payload.job_description_html)
@@ -541,8 +578,9 @@ async def tailor(
 
     return TailorResponse(
         application_id=application.id,
-        tailored_resume_url=application.tailored_resume_url,  # type: ignore[arg-type]
-        cover_letter_text=application.cover_letter_text,  # type: ignore[arg-type]
+        tailored_resume_url=application.tailored_resume_url or "",
+        cover_letter_text=application.cover_letter_text or "",
+        cover_letter_url=result.get("cover_letter_url", ""),
     )
 
 
@@ -568,9 +606,10 @@ async def tailor_preview(
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
 
-    template = await session.get(Template, payload.template_id)
-    if template is None:
-        raise HTTPException(status_code=404, detail="Template not found")
+    if payload.template_id is not None:
+        template = await session.get(Template, payload.template_id)
+        if template is None:
+            raise HTTPException(status_code=404, detail="Template not found")
 
     core_skills: list[str] = user.core_skills if isinstance(user.core_skills, list) else []
     jd_plain_text = html_to_plain_text(payload.job_description_html)
@@ -603,25 +642,25 @@ async def tailor_confirm(
     session: AsyncSession = Depends(get_session),
 ) -> TailorConfirmResponse:
     """Phase 2: accept user-edited content, generate docx, persist application."""
-    template = await session.get(Template, payload.template_id)
-    if template is None:
-        raise HTTPException(status_code=404, detail="Template not found")
-
-    template_path = Path(template.file_path)
-    if not template_path.exists():
-        raise HTTPException(status_code=500, detail="Template file missing from storage")
+    template_path: Path | None = None
+    if payload.template_id is not None:
+        template = await session.get(Template, payload.template_id)
+        if template is not None:
+            tp = Path(template.file_path)
+            if tp.exists():
+                template_path = tp
 
     content = {
         "summary": payload.summary,
-        "experience_1": payload.experience_1,
-        "experience_2": payload.experience_2,
-        "experience_3": payload.experience_3,
+        "experiences": payload.experiences,
         "skills": payload.skills,
         "education": payload.education,
+        "certifications": payload.certifications,
+        "cover_letter": payload.cover_letter,
     }
 
     try:
-        output_filename = finalize_document(
+        result = finalize_document(
             template_path=template_path,
             content=content,
         )
@@ -641,7 +680,7 @@ async def tailor_confirm(
         organization=payload.organization,
         job_description_html=payload.job_description_html,
         cover_letter_sentiment=payload.cover_letter_sentiment,
-        tailored_resume_url=output_filename,
+        tailored_resume_url=result["resume_url"],
         cover_letter_text=payload.cover_letter,
     )
     session.add(application)
@@ -650,8 +689,53 @@ async def tailor_confirm(
 
     return TailorConfirmResponse(
         application_id=application.id,
-        tailored_resume_url=output_filename,
+        tailored_resume_url=result["resume_url"],
         cover_letter_text=payload.cover_letter,
+        cover_letter_url=result["cover_letter_url"],
+    )
+
+
+@app.post(
+    "/api/v1/applications/tailor/regenerate-section",
+    response_model=RegenerateSectionResponse,
+)
+async def tailor_regenerate_section(
+    payload: RegenerateSectionRequest,
+    session: AsyncSession = Depends(get_session),
+) -> RegenerateSectionResponse:
+    """Regenerate a single section of the resume or cover letter."""
+    user = await session.get(User, payload.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    resume = await session.get(Resume, payload.resume_id)
+    if resume is None:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    core_skills: list[str] = user.core_skills if isinstance(user.core_skills, list) else []
+    jd_plain_text = html_to_plain_text(payload.job_description_html)
+
+    try:
+        new_content = await regenerate_section(
+            core_skills=core_skills,
+            resume_text=resume.extracted_text,
+            job_title=payload.job_title,
+            organization=payload.organization,
+            job_description=jd_plain_text,
+            section_id=payload.section_id,
+            current_content=payload.current_content,
+            cover_letter_sentiment=payload.cover_letter_sentiment,
+        )
+    except Exception:
+        logger.exception("Section regeneration failed")
+        raise HTTPException(
+            status_code=500,
+            detail="Section regeneration encountered an error",
+        )
+
+    return RegenerateSectionResponse(
+        section_id=payload.section_id,
+        content=new_content,
     )
 
 

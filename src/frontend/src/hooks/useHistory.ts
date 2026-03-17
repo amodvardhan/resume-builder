@@ -116,7 +116,7 @@ export interface UseReferenceEngineReturn {
 
 export interface BaselineContext {
   sourceApplicationId: string;
-  templateId: string;
+  templateId: string | null;
   organization: string;
   jobTitle: string;
 }

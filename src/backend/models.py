@@ -95,10 +95,10 @@ class Application(Base):
         ForeignKey("resumes.id", ondelete="SET NULL"),
         nullable=True,
     )
-    template_id: Mapped[uuid.UUID] = mapped_column(
+    template_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
-        ForeignKey("templates.id", ondelete="RESTRICT"),
-        nullable=False,
+        ForeignKey("templates.id", ondelete="SET NULL"),
+        nullable=True,
     )
     job_title: Mapped[str] = mapped_column(String(255), nullable=False)
     organization: Mapped[str] = mapped_column(String(255), nullable=False)

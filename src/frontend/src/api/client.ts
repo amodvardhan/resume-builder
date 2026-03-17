@@ -4,6 +4,8 @@ import type {
   Application,
   CloneRequest,
   CloneResponse,
+  RegenerateSectionRequest,
+  RegenerateSectionResponse,
   ResumeListItem,
   ResumeUploadResponse,
   TailorConfirmRequest,
@@ -154,6 +156,16 @@ export async function tailorConfirm(
 ): Promise<TailorConfirmResponse> {
   const { data } = await api.post<TailorConfirmResponse>(
     "/api/v1/applications/tailor/confirm",
+    payload,
+  );
+  return data;
+}
+
+export async function regenerateSectionApi(
+  payload: RegenerateSectionRequest,
+): Promise<RegenerateSectionResponse> {
+  const { data } = await api.post<RegenerateSectionResponse>(
+    "/api/v1/applications/tailor/regenerate-section",
     payload,
   );
   return data;

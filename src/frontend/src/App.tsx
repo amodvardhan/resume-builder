@@ -8,11 +8,13 @@ import ResumeDrop from "./components/ResumeDrop";
 import RichEditor from "./components/RichEditor";
 import SentimentSlider from "./components/SentimentSlider";
 import DraftReview from "./components/DraftReview";
+import TemplateGallery from "./components/TemplateGallery";
 import type { SentimentValue } from "./components/SentimentSlider";
 import {
   useUserProfile,
   useTailorPreview,
   useTailorConfirm,
+  useRegenerateSection,
   useUpdateUser,
   useUploadResume,
 } from "./hooks/useResumeEngine";
@@ -41,11 +43,13 @@ export default function App() {
   const [composePhase, setComposePhase] = useState<ComposePhase>("input");
   const [draft, setDraft] = useState<TailorPreviewResponse | null>(null);
   const [result, setResult] = useState<TailorConfirmResponse | null>(null);
+  const [templateStyle, setTemplateStyle] = useState<string>("classic");
 
   const userProfile = useUserProfile(USER_ID);
   const updateUserMutation = useUpdateUser(USER_ID);
   const previewMutation = useTailorPreview();
   const confirmMutation = useTailorConfirm();
+  const sectionRegenMutation = useRegenerateSection();
   const resumeUploadMutation = useUploadResume(USER_ID);
 
   const refEngine = useReferenceEngine(USER_ID);
@@ -62,12 +66,12 @@ export default function App() {
   );
 
   const handlePreview = useCallback(() => {
-    if (!templateId || !resumeId) return;
+    if (!resumeId) return;
     previewMutation.mutate(
       {
         user_id: USER_ID,
         resume_id: resumeId,
-        template_id: templateId,
+        template_id: templateId ?? undefined,
         job_title: jobTitle,
         organization,
         job_description_html: jobDescriptionHtml,
@@ -84,28 +88,73 @@ export default function App() {
 
   const handleConfirm = useCallback(
     (edited: TailorPreviewResponse) => {
-      if (!templateId || !resumeId) return;
+      if (!resumeId) return;
+      const { original_resume_text: _, ...contentFields } = edited;
       confirmMutation.mutate(
         {
           user_id: USER_ID,
           resume_id: resumeId,
-          template_id: templateId,
+          template_id: templateId ?? undefined,
           job_title: jobTitle,
           organization,
           job_description_html: jobDescriptionHtml,
           cover_letter_sentiment: sentiment,
-          ...edited,
+          ...contentFields,
         },
         {
           onSuccess: (data) => {
             setResult(data);
             setComposePhase("done");
-            setDraft(null);
           },
         },
       );
     },
     [resumeId, templateId, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation],
+  );
+
+  const handleRegenerate = useCallback(() => {
+    if (!resumeId) return;
+    previewMutation.mutate(
+      {
+        user_id: USER_ID,
+        resume_id: resumeId,
+        template_id: templateId ?? undefined,
+        job_title: jobTitle,
+        organization,
+        job_description_html: jobDescriptionHtml,
+        cover_letter_sentiment: sentiment,
+      },
+      {
+        onSuccess: (data) => {
+          setDraft(data);
+        },
+      },
+    );
+  }, [resumeId, templateId, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation]);
+
+  const handleRegenerateSection = useCallback(
+    (sectionId: string, currentContent: string): Promise<string> => {
+      if (!resumeId) return Promise.reject(new Error("No resume"));
+      return new Promise((resolve, reject) => {
+        sectionRegenMutation.mutate(
+          {
+            user_id: USER_ID,
+            resume_id: resumeId,
+            section_id: sectionId,
+            current_content: currentContent,
+            job_title: jobTitle,
+            organization,
+            job_description_html: jobDescriptionHtml,
+            cover_letter_sentiment: sentiment,
+          },
+          {
+            onSuccess: (data) => resolve(data.content),
+            onError: (err) => reject(err),
+          },
+        );
+      });
+    },
+    [resumeId, jobTitle, organization, jobDescriptionHtml, sentiment, sectionRegenMutation],
   );
 
   const handleBackToEditor = useCallback(() => {
@@ -148,6 +197,7 @@ export default function App() {
           application_id: res.new_application_id,
           tailored_resume_url: res.tailored_resume_url,
           cover_letter_text: res.cover_letter_text,
+          cover_letter_url: "",
         });
         setComposePhase("done");
       });
@@ -157,14 +207,12 @@ export default function App() {
   const isPreviewing = previewMutation.isPending;
   const isCloning = refEngine.cloneMutation.isPending;
   const canSubmitTailor =
-    resumeId && templateId && jobTitle && organization && jobDescriptionHtml && !isPreviewing;
+    resumeId && jobTitle && organization && jobDescriptionHtml && !isPreviewing;
   const canSubmitClone =
     isComposing && jobTitle && organization && jobDescriptionHtml && !isCloning;
 
   const tailorDisabledReason = !resumeId
     ? "Upload your resume first"
-    : !templateId
-    ? "Upload a resume template"
     : !jobTitle || !organization || !jobDescriptionHtml
     ? "Fill in all job details"
     : null;
@@ -201,18 +249,20 @@ export default function App() {
         {currentPage === "compose" && composePhase === "review" && draft && (
           <DraftReview
             draft={draft}
+            templateStyle={templateStyle as "classic" | "modern" | "minimal" | "executive" | "creative"}
             onConfirm={handleConfirm}
             onBack={handleBackToEditor}
+            onRegenerate={handleRegenerate}
+            onRegenerateSection={handleRegenerateSection}
             isConfirming={confirmMutation.isPending}
+            isRegenerating={previewMutation.isPending}
             error={confirmMutation.isError ? extractErrorMessage(confirmMutation.error) : null}
           />
         )}
 
-        {/* ── Compose: INPUT + DONE (narrow centered layout) ─────── */}
-        {currentPage === "compose" && composePhase !== "review" && (
+        {/* ── Compose: INPUT (narrow centered layout) ───────────── */}
+        {currentPage === "compose" && composePhase === "input" && (
           <div className="page-enter mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
-
-            {/* ──── Phase: INPUT ──────────────────────────────────── */}
             {composePhase === "input" && (
               <>
                 {/* Page title */}
@@ -272,17 +322,45 @@ export default function App() {
                           onUploaded={handleResumeUploaded}
                           uploadMutation={resumeUploadMutation}
                         />
-                        <MagicDrop onUploaded={handleTemplateUploaded} />
+                        <div>
+                          <MagicDrop onUploaded={handleTemplateUploaded} />
+                          <p className="mt-1.5 text-[10px] text-secondary/60">
+                            Optional — if skipped, the system will generate a professional document using the selected format below.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {/* Step 2: Job details */}
+                  {/* Step 2: Resume Template Style */}
+                  {!isComposing && (
+                    <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
+                      <div className="border-b border-border-light px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
+                            2
+                          </span>
+                          <h2 className="text-sm font-semibold text-primary">Resume Format</h2>
+                        </div>
+                        <p className="mt-1 ml-9 text-xs text-secondary">
+                          Select a resume format that fits your target region and industry.
+                        </p>
+                      </div>
+                      <div className="p-6">
+                        <TemplateGallery
+                          selectedId={templateStyle}
+                          onSelect={setTemplateStyle}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Step 3: Job details */}
                   <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
                     <div className="border-b border-border-light px-6 py-4">
                       <div className="flex items-center gap-3">
                         <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
-                          {isComposing ? "1" : "2"}
+                          {isComposing ? "1" : "3"}
                         </span>
                         <h2 className="text-sm font-semibold text-primary">Job Details</h2>
                       </div>
@@ -309,13 +387,13 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Step 3: Tone (only for fresh tailor) */}
+                  {/* Step 4: Tone (only for fresh tailor) */}
                   {!isComposing && (
                     <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
                       <div className="border-b border-border-light px-6 py-4">
                         <div className="flex items-center gap-3">
                           <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
-                            3
+                            4
                           </span>
                           <h2 className="text-sm font-semibold text-primary">Cover Letter Tone</h2>
                         </div>
@@ -385,76 +463,155 @@ export default function App() {
               </>
             )}
 
-            {/* ──── Phase: DONE ──────────────────────────────────── */}
-            {composePhase === "done" && result && (
-              <div className="page-enter">
-                {/* Progress indicator */}
-                <div className="mb-8">
-                  <div className="flex items-center gap-2 text-xs font-medium text-secondary">
-                    <span className="text-brand">Input</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-border-hover" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="text-brand">Review Draft</span>
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-border-hover" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-                    </svg>
-                    <span className="rounded-full bg-success px-2 py-0.5 text-white">Complete</span>
+          </div>
+        )}
+
+        {/* ── Compose: DONE (wider layout for styled preview) ──── */}
+        {currentPage === "compose" && composePhase === "done" && result && (
+          <div className="page-enter flex-1 overflow-y-auto bg-[#eaecf0]">
+            <div className="mx-auto max-w-[860px] px-4 py-8 sm:px-8">
+              {/* Success banner + download buttons */}
+              <div className="mb-6 rounded-2xl border border-success/30 bg-white shadow-sm">
+                <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-full bg-success/10">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-semibold text-primary">Application Ready</h3>
+                      <p className="text-xs text-secondary">Your tailored documents are ready for download</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2.5">
+                    {result.tailored_resume_url && (
+                      <a
+                        href={getFileDownloadUrl(result.tailored_resume_url)}
+                        download
+                        className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Resume .docx
+                      </a>
+                    )}
+                    {result.cover_letter_url && (
+                      <a
+                        href={getFileDownloadUrl(result.cover_letter_url)}
+                        download
+                        className="inline-flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5 text-xs font-semibold text-brand shadow-sm transition-all hover:bg-brand/10 hover:shadow-md"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                        </svg>
+                        Cover Letter .docx
+                      </a>
+                    )}
                   </div>
                 </div>
+              </div>
 
-                <div className="rounded-2xl border border-success/20 bg-success-light shadow-sm">
-                  <div className="border-b border-success/10 px-6 py-4 sm:px-8">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-success/10">
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4.5 w-4.5 text-success" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                          </svg>
+              {/* Styled preview of final documents */}
+              {draft ? (
+                <>
+                  {/* Resume page — styled with selected template */}
+                  <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                    <div className="px-12 py-10 sm:px-16 sm:py-12">
+                      {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
+                        <div className="tpl-header">
+                          <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
+                            Tailored Resume
+                          </div>
                         </div>
-                        <h3 className="text-sm font-semibold text-primary">Application Ready</h3>
-                      </div>
-                      {result.tailored_resume_url && (
-                        <a
-                          href={getFileDownloadUrl(result.tailored_resume_url)}
-                          download
-                          className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
-                          </svg>
-                          Download .docx
-                        </a>
                       )}
+                      <div className="space-y-5">
+                        {draft.summary && (
+                          <div>
+                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Professional Summary</h3>
+                            <p className="text-sm leading-relaxed text-primary/85">{draft.summary}</p>
+                          </div>
+                        )}
+                        {draft.experiences?.length > 0 && draft.experiences.map((exp, i) => (
+                          <div key={i}>
+                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">
+                              Experience {draft.experiences.length > 1 ? i + 1 : ""}
+                            </h3>
+                            <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">{exp}</div>
+                          </div>
+                        ))}
+                        {draft.skills && (
+                          <div>
+                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Skills</h3>
+                            <p className="text-sm leading-relaxed text-primary/85">{draft.skills}</p>
+                          </div>
+                        )}
+                        {draft.education && (
+                          <div>
+                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Education</h3>
+                            <p className="text-sm leading-relaxed text-primary/85">{draft.education}</p>
+                          </div>
+                        )}
+                        {draft.certifications && (
+                          <div>
+                            <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-2">Certifications</h3>
+                            <p className="text-sm leading-relaxed text-primary/85">{draft.certifications}</p>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {result.cover_letter_text && (
+                  {/* Page break indicator */}
+                  <div className="my-5 flex items-center justify-center">
+                    <div className="flex items-center gap-3 text-[10px] font-semibold uppercase tracking-widest text-secondary/40">
+                      <div className="h-px w-10 bg-secondary/20" />
+                      Cover Letter
+                      <div className="h-px w-10 bg-secondary/20" />
+                    </div>
+                  </div>
+
+                  {/* Cover letter page — same template style */}
+                  <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                    <div className="px-12 py-10 sm:px-16 sm:py-12">
+                      <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-4">Cover Letter</h3>
+                      <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">
+                        {result.cover_letter_text}
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                /* Fallback: no draft available (clone flow) — plain card */
+                result.cover_letter_text && (
+                  <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
                     <div className="p-6 sm:p-8">
-                      <h4 className="mb-2 text-xs font-semibold uppercase tracking-wider text-secondary">
+                      <h4 className="mb-3 text-xs font-semibold uppercase tracking-wider text-secondary">
                         Cover Letter
                       </h4>
                       <p className="whitespace-pre-wrap text-sm leading-relaxed text-primary/80">
                         {result.cover_letter_text}
                       </p>
                     </div>
-                  )}
-                </div>
+                  </div>
+                )
+              )}
 
-                <button
-                  onClick={handleNewApplication}
-                  className="mt-6 w-full rounded-xl border border-border-muted bg-surface py-3.5 text-sm font-semibold text-primary shadow-sm transition-all hover:border-brand hover:text-brand"
-                >
-                  Create Another Application
-                </button>
-              </div>
-            )}
+              <button
+                onClick={handleNewApplication}
+                className="mt-6 w-full rounded-xl border border-border-muted bg-surface py-3.5 text-sm font-semibold text-primary shadow-sm transition-all hover:border-brand hover:text-brand"
+              >
+                Create Another Application
+              </button>
+              <div className="h-8" />
+            </div>
           </div>
         )}
       </div>
 
-      {/* Footer — hidden during document review to give full canvas space */}
-      {!(currentPage === "compose" && composePhase === "review") && (
+      {/* Footer — hidden during review/done phases to give full canvas space */}
+      {!(currentPage === "compose" && (composePhase === "review" || composePhase === "done")) && (
         <footer className="mt-auto border-t border-border-light bg-surface/50">
           <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6 lg:px-8">
             <p className="text-xs text-secondary">
