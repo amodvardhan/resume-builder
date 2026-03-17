@@ -336,6 +336,84 @@ def inject_into_template(template_path: Path, replacements: dict[str, str]) -> s
 
 
 # ---------------------------------------------------------------------------
+# HTML → rich docx runs utility
+# ---------------------------------------------------------------------------
+
+import re as _re
+from html import unescape as _unescape
+
+_KNOWN_TAG_RE = _re.compile(
+    r"<(/?)(b|strong|i|em|u)(?:\s[^>]*)?>|<[^>]+>", _re.IGNORECASE,
+)
+
+
+def _add_rich_runs(
+    paragraph: Any,
+    text: str,
+    *,
+    font_size: float | None = None,
+    font_name: str | None = None,
+    font_color: tuple[int, int, int] | None = None,
+    base_bold: bool = False,
+    base_italic: bool = False,
+) -> None:
+    """Parse simple HTML (<b>, <strong>, <i>, <em>) into proper docx runs.
+
+    Unknown tags are silently stripped. When *text* contains no HTML at all,
+    a single run is created (fast path).
+    """
+    from docx.shared import Pt, RGBColor
+
+    def _apply(run: Any, bold: bool, italic: bool) -> None:
+        if bold:
+            run.bold = True
+        if italic:
+            run.italic = True
+        if font_size:
+            run.font.size = Pt(font_size)
+        if font_name:
+            run.font.name = font_name
+        if font_color:
+            run.font.color.rgb = RGBColor(*font_color)
+
+    if "<" not in text:
+        run = paragraph.add_run(text)
+        _apply(run, base_bold, base_italic)
+        return
+
+    bold_depth = 0
+    italic_depth = 0
+    last_end = 0
+
+    for m in _KNOWN_TAG_RE.finditer(text):
+        before = text[last_end : m.start()]
+        if before:
+            run = paragraph.add_run(_unescape(before))
+            _apply(run, base_bold or bold_depth > 0, base_italic or italic_depth > 0)
+
+        last_end = m.end()
+        tag = (m.group(2) or "").lower()
+        if tag in ("b", "strong"):
+            bold_depth += -1 if m.group(1) == "/" else 1
+            bold_depth = max(0, bold_depth)
+        elif tag in ("i", "em"):
+            italic_depth += -1 if m.group(1) == "/" else 1
+            italic_depth = max(0, italic_depth)
+
+    after = text[last_end:]
+    if after:
+        run = paragraph.add_run(_unescape(after))
+        _apply(run, base_bold or bold_depth > 0, base_italic or italic_depth > 0)
+
+
+def _strip_html(text: str) -> str:
+    """Remove all HTML tags from *text* and unescape entities."""
+    if "<" not in text:
+        return text
+    return _unescape(_re.sub(r"<[^>]+>", "", text))
+
+
+# ---------------------------------------------------------------------------
 # From-scratch document builders (when no user template is uploaded)
 # ---------------------------------------------------------------------------
 
@@ -343,6 +421,8 @@ def _add_heading(doc: Any, text: str, level: int = 2, color: tuple[int, int, int
     from docx.shared import Pt, RGBColor
     heading = doc.add_heading(text, level=level)
     default_size = 12 if level == 2 else 11
+    heading.paragraph_format.space_before = Pt(16)
+    heading.paragraph_format.space_after = Pt(2)
     for run in heading.runs:
         run.font.color.rgb = RGBColor(*color)
         run.font.size = Pt(size or default_size)
@@ -351,11 +431,11 @@ def _add_heading(doc: Any, text: str, level: int = 2, color: tuple[int, int, int
 
 def _add_horizontal_rule(doc: Any) -> None:
     """Add a thin horizontal line paragraph."""
-    from docx.shared import Pt, RGBColor
+    from docx.shared import Pt
     from docx.oxml.ns import qn
     p = doc.add_paragraph()
-    p.paragraph_format.space_before = Pt(2)
-    p.paragraph_format.space_after = Pt(2)
+    p.paragraph_format.space_before = Pt(1)
+    p.paragraph_format.space_after = Pt(8)
     pPr = p._p.get_or_add_pPr()
     pBdr = pPr.makeelement(qn("w:pBdr"), {})
     bottom = pBdr.makeelement(qn("w:bottom"), {
@@ -373,23 +453,22 @@ def _add_experience_block(doc: Any, exp_text: str, bold_size: float = 10.5) -> N
     lines = exp_text.split("\n")
     is_first_content = True
     for line in lines:
-        stripped = line.strip()
+        stripped = _strip_html(line).strip()
         if not stripped:
             continue
         p = doc.add_paragraph()
         if is_first_content:
-            run = p.add_run(stripped)
-            run.bold = True
-            run.font.size = Pt(bold_size)
+            p.paragraph_format.space_before = Pt(8)
+            p.paragraph_format.space_after = Pt(2)
+            _add_rich_runs(p, line.strip(), font_size=bold_size, base_bold=True)
             is_first_content = False
         elif stripped.startswith("•"):
-            try:
-                p.style = doc.styles["List Bullet"]
-            except KeyError:
-                p.style = doc.styles["Normal"]
-            p.add_run(stripped.lstrip("• "))
+            p.paragraph_format.space_after = Pt(2)
+            p.paragraph_format.left_indent = Pt(14)
+            _add_rich_runs(p, line.strip().lstrip("• "), font_size=bold_size - 0.5)
         else:
-            p.add_run(stripped)
+            p.paragraph_format.space_after = Pt(2)
+            _add_rich_runs(p, line.strip())
 
 
 def _split_entries(text: str) -> list[str]:
@@ -399,15 +478,13 @@ def _split_entries(text: str) -> list[str]:
 
 
 def _add_separated_entries(doc_or_cell: Any, entries: list[str], font_size: float = 10, font_name: str = "Calibri") -> None:
-    """Add multiple entries as separate paragraphs with spacing."""
+    """Add multiple entries as separate paragraphs with clear spacing."""
     from docx.shared import Pt
     for i, entry in enumerate(entries):
         p = doc_or_cell.add_paragraph()
-        p.paragraph_format.space_before = Pt(4 if i > 0 else 0)
-        p.paragraph_format.space_after = Pt(2)
-        run = p.add_run(entry)
-        run.font.size = Pt(font_size)
-        run.font.name = font_name
+        p.paragraph_format.space_before = Pt(6 if i > 0 else 0)
+        p.paragraph_format.space_after = Pt(4)
+        _add_rich_runs(p, entry, font_size=font_size, font_name=font_name)
 
 
 # ── Style-specific resume builders ────────────────────────────────────────
@@ -426,13 +503,16 @@ def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
     style.font.name = "Calibri"
     style.font.size = Pt(10.5)
     style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
-    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.line_spacing = Pt(14)
 
     if content.get("summary"):
         _add_heading(doc, "Professional Summary")
         _add_horizontal_rule(doc)
-        doc.add_paragraph(content["summary"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["summary"])
+        p.paragraph_format.space_after = Pt(6)
 
     experiences = content.get("experiences", [])
     if experiences:
@@ -444,7 +524,9 @@ def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
     if content.get("skills"):
         _add_heading(doc, "Skills")
         _add_horizontal_rule(doc)
-        doc.add_paragraph(content["skills"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["skills"])
+        p.paragraph_format.space_after = Pt(6)
 
     if content.get("education"):
         _add_heading(doc, "Education")
@@ -460,13 +542,15 @@ def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
 def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
     """Two-column layout: 30% sidebar flush-left, 70% main content."""
     from docx.shared import Pt, Inches, RGBColor, Cm, Emu
-    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ROW_HEIGHT_RULE
 
     for section in doc.sections:
         section.top_margin = Inches(0)
         section.bottom_margin = Inches(0)
         section.left_margin = Inches(0)
         section.right_margin = Inches(0.4)
+        section.page_height = Inches(11)
+        section.page_width = Inches(8.5)
 
     style = doc.styles["Normal"]
     style.font.name = "Calibri"
@@ -488,7 +572,16 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
     table.cell(0, 0).width = sidebar_width
     table.cell(0, 1).width = main_width
 
+    row = table.rows[0]
+    row.height = Inches(11)
+    row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+
     from docx.oxml.ns import qn
+
+    # Allow row to break across pages so sidebar extends to all pages
+    trPr = row._tr.get_or_add_trPr()
+    for old_cs in trPr.findall(qn("w:cantSplit")):
+        trPr.remove(old_cs)
 
     tbl = table._tbl
     tblPr = tbl.tblPr if tbl.tblPr is not None else tbl.makeelement(qn("w:tblPr"), {})
@@ -507,7 +600,7 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
     # Zero cell margins on sidebar for flush-left appearance
     tcPr_sb = sidebar._tc.get_or_add_tcPr()
     tcMar = tcPr_sb.makeelement(qn("w:tcMar"), {})
-    for side_name, val in (("left", "0"), ("top", "113"), ("right", "113"), ("bottom", "113")):
+    for side_name, val in (("left", "0"), ("top", "170"), ("right", "113"), ("bottom", "113")):
         tcMar.append(tcPr_sb.makeelement(qn(f"w:{side_name}"), {qn("w:w"): val, qn("w:type"): "dxa"}))
     tcPr_sb.append(tcMar)
 
@@ -532,10 +625,10 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
         p = sidebar.add_paragraph()
         p.paragraph_format.space_after = Pt(2)
         p.paragraph_format.left_indent = Pt(12)
-        run = p.add_run(text)
-        run.font.size = Pt(9)
-        run.font.name = "Calibri"
-        run.font.color.rgb = RGBColor(0x33, 0x40, 0x55)
+        _add_rich_runs(
+            p, text, font_size=9, font_name="Calibri",
+            font_color=(0x33, 0x40, 0x55),
+        )
 
     if content.get("skills"):
         _sidebar_heading("Skills")
@@ -557,14 +650,14 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
     # Main column — left padding via cell margin
     tcPr_main = main._tc.get_or_add_tcPr()
     tcMar_main = tcPr_main.makeelement(qn("w:tcMar"), {})
-    for side_name, val in (("left", "170"), ("top", "113"), ("right", "57"), ("bottom", "113")):
+    for side_name, val in (("left", "200"), ("top", "170"), ("right", "85"), ("bottom", "113")):
         tcMar_main.append(tcPr_main.makeelement(qn(f"w:{side_name}"), {qn("w:w"): val, qn("w:type"): "dxa"}))
     tcPr_main.append(tcMar_main)
 
     def _main_heading(text: str) -> None:
         p = main.add_paragraph()
-        p.paragraph_format.space_before = Pt(8)
-        p.paragraph_format.space_after = Pt(4)
+        p.paragraph_format.space_before = Pt(14)
+        p.paragraph_format.space_after = Pt(6)
         run = p.add_run(text.upper())
         run.bold = True
         run.font.size = Pt(11)
@@ -573,10 +666,9 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
 
     def _main_text(text: str) -> None:
         p = main.add_paragraph()
-        p.paragraph_format.space_after = Pt(3)
-        run = p.add_run(text)
-        run.font.size = Pt(10)
-        run.font.name = "Calibri"
+        p.paragraph_format.space_after = Pt(6)
+        p.paragraph_format.line_spacing = Pt(14)
+        _add_rich_runs(p, text, font_size=10, font_name="Calibri")
 
     if content.get("summary"):
         _main_heading("Professional Summary")
@@ -589,25 +681,29 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
             lines = exp_text.split("\n")
             is_first = True
             for line in lines:
-                stripped = line.strip()
-                if not stripped:
+                plain = _strip_html(line).strip()
+                if not plain:
                     continue
                 p = main.add_paragraph()
-                p.paragraph_format.space_after = Pt(1)
                 if is_first:
-                    run = p.add_run(stripped)
-                    run.bold = True
-                    run.font.size = Pt(10)
-                    run.font.name = "Calibri"
+                    p.paragraph_format.space_before = Pt(8)
+                    p.paragraph_format.space_after = Pt(3)
+                    _add_rich_runs(
+                        p, line.strip(), font_size=10, font_name="Calibri",
+                        base_bold=True,
+                    )
                     is_first = False
-                elif stripped.startswith("•"):
-                    run = p.add_run(stripped)
-                    run.font.size = Pt(9.5)
-                    run.font.name = "Calibri"
+                elif plain.startswith("•"):
+                    p.paragraph_format.space_after = Pt(2)
+                    p.paragraph_format.left_indent = Pt(12)
+                    _add_rich_runs(
+                        p, line.strip(), font_size=9.5, font_name="Calibri",
+                    )
                 else:
-                    run = p.add_run(stripped)
-                    run.font.size = Pt(10)
-                    run.font.name = "Calibri"
+                    p.paragraph_format.space_after = Pt(2)
+                    _add_rich_runs(
+                        p, line.strip(), font_size=10, font_name="Calibri",
+                    )
 
 
 def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
@@ -624,13 +720,14 @@ def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
     style.font.name = "Arial"
     style.font.size = Pt(10.5)
     style.font.color.rgb = RGBColor(0x00, 0x00, 0x00)
-    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.line_spacing = Pt(14)
 
     def _minimal_heading(text: str) -> None:
         p = doc.add_paragraph()
-        p.paragraph_format.space_before = Pt(12)
-        p.paragraph_format.space_after = Pt(4)
+        p.paragraph_format.space_before = Pt(16)
+        p.paragraph_format.space_after = Pt(6)
         run = p.add_run(text.upper())
         run.bold = True
         run.font.size = Pt(11)
@@ -639,7 +736,9 @@ def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
 
     if content.get("summary"):
         _minimal_heading("Summary")
-        doc.add_paragraph(content["summary"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["summary"])
+        p.paragraph_format.space_after = Pt(6)
 
     experiences = content.get("experiences", [])
     if experiences:
@@ -649,7 +748,9 @@ def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
 
     if content.get("skills"):
         _minimal_heading("Skills")
-        doc.add_paragraph(content["skills"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["skills"])
+        p.paragraph_format.space_after = Pt(6)
 
     if content.get("education"):
         _minimal_heading("Education")
@@ -674,8 +775,9 @@ def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
     style.font.name = "Georgia"
     style.font.size = Pt(10.5)
     style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
-    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.line_spacing = Pt(14)
 
     # Dark header band
     header_table = doc.add_table(rows=1, cols=1)
@@ -701,7 +803,9 @@ def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
     if content.get("summary"):
         _add_heading(doc, "Executive Summary", color=ACCENT, size=13)
         _add_horizontal_rule(doc)
-        doc.add_paragraph(content["summary"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["summary"])
+        p.paragraph_format.space_after = Pt(6)
 
     experiences = content.get("experiences", [])
     if experiences:
@@ -713,7 +817,9 @@ def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
     if content.get("skills"):
         _add_heading(doc, "Core Competencies", color=ACCENT, size=13)
         _add_horizontal_rule(doc)
-        doc.add_paragraph(content["skills"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["skills"])
+        p.paragraph_format.space_after = Pt(6)
 
     if content.get("education"):
         _add_heading(doc, "Education", color=ACCENT, size=13)
@@ -740,8 +846,9 @@ def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
     style.font.name = "Calibri"
     style.font.size = Pt(10.5)
     style.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
-    style.paragraph_format.space_after = Pt(4)
+    style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
+    style.paragraph_format.line_spacing = Pt(14)
 
     # Gradient-style accent bar at top
     bar_table = doc.add_table(rows=1, cols=2)
@@ -762,7 +869,9 @@ def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
 
     if content.get("summary"):
         _add_heading(doc, "About Me", color=ACCENT, size=13)
-        doc.add_paragraph(content["summary"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["summary"])
+        p.paragraph_format.space_after = Pt(6)
 
     experiences = content.get("experiences", [])
     if experiences:
@@ -772,7 +881,9 @@ def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
 
     if content.get("skills"):
         _add_heading(doc, "Skills & Tools", color=ACCENT, size=13)
-        doc.add_paragraph(content["skills"])
+        p = doc.add_paragraph()
+        _add_rich_runs(p, content["skills"])
+        p.paragraph_format.space_after = Pt(6)
 
     if content.get("education"):
         _add_heading(doc, "Education", color=ACCENT, size=13)
@@ -828,7 +939,8 @@ def _build_classic_cover_letter(doc: Any, cover_letter_text: str) -> None:
     for paragraph_text in cover_letter_text.split("\n\n"):
         text = paragraph_text.strip()
         if text:
-            doc.add_paragraph(text)
+            p = doc.add_paragraph()
+            _add_rich_runs(p, text)
 
 
 def _build_modern_cover_letter(doc: Any, cover_letter_text: str) -> None:
@@ -865,7 +977,8 @@ def _build_modern_cover_letter(doc: Any, cover_letter_text: str) -> None:
     for paragraph_text in cover_letter_text.split("\n\n"):
         text = paragraph_text.strip()
         if text:
-            doc.add_paragraph(text)
+            p = doc.add_paragraph()
+            _add_rich_runs(p, text)
 
 
 def _build_minimal_cover_letter(doc: Any, cover_letter_text: str) -> None:
@@ -887,7 +1000,8 @@ def _build_minimal_cover_letter(doc: Any, cover_letter_text: str) -> None:
     for paragraph_text in cover_letter_text.split("\n\n"):
         text = paragraph_text.strip()
         if text:
-            doc.add_paragraph(text)
+            p = doc.add_paragraph()
+            _add_rich_runs(p, text)
 
 
 def _build_executive_cover_letter(doc: Any, cover_letter_text: str) -> None:
@@ -929,7 +1043,8 @@ def _build_executive_cover_letter(doc: Any, cover_letter_text: str) -> None:
     for paragraph_text in cover_letter_text.split("\n\n"):
         text = paragraph_text.strip()
         if text:
-            doc.add_paragraph(text)
+            p = doc.add_paragraph()
+            _add_rich_runs(p, text)
 
 
 def _build_creative_cover_letter(doc: Any, cover_letter_text: str) -> None:
@@ -967,7 +1082,8 @@ def _build_creative_cover_letter(doc: Any, cover_letter_text: str) -> None:
     for paragraph_text in cover_letter_text.split("\n\n"):
         text = paragraph_text.strip()
         if text:
-            doc.add_paragraph(text)
+            p = doc.add_paragraph()
+            _add_rich_runs(p, text)
 
 
 _CL_STYLE_BUILDERS: dict[str, Any] = {

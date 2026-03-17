@@ -71,3 +71,21 @@
   * [ ] Certifications separated by `;` or `\n` display as individual entries with shield icons.
   * [ ] The Draft Review screen uses a click-to-edit toggle: formatted preview by default, TipTap editor on click.
   * [ ] The downloadable `.docx` splits education and certifications on `;` and `\n` into separate paragraphs.
+
+## REQ-010: Document Quality & PDF Download
+* **Description:** Generated documents must have professional spacing and layout. Users can download as PDF (default) or `.docx`.
+* **Acceptance Criteria:**
+  * [ ] The modern template sidebar covers the full page height in the `.docx`, extending to all pages if content overflows.
+  * [ ] All template builders use consistent paragraph spacing: 14pt line spacing, 6pt space-after for body, 16pt space-before / 8pt space-after for headings.
+  * [ ] Experience blocks have proper indentation for bullet points and spacing between role titles and content.
+  * [ ] Download endpoint supports `?format=pdf` (default) and `?format=docx` query parameter.
+  * [ ] PDF conversion uses `docx2pdf` (MS Word on macOS/Windows, LibreOffice on Linux) with result caching.
+  * [ ] Frontend download buttons default to PDF with a secondary `.docx` option.
+
+## REQ-011: HTML-to-Rich-Text in Generated Documents
+* **Description:** When content contains HTML markup (e.g., `<b>`, `<strong>`, `<i>`, `<em>`) from LLM output or user edits, the generated `.docx` must convert these to proper Word formatting (bold/italic runs) instead of displaying raw HTML tags as literal text.
+* **Acceptance Criteria:**
+  * [ ] A `_add_rich_runs()` utility parses `<b>`, `<strong>`, `<i>`, `<em>` tags into proper bold/italic docx runs.
+  * [ ] Unknown/unsupported HTML tags are silently stripped from the output.
+  * [ ] All five resume template builders and all five cover letter builders use `_add_rich_runs()` for content paragraphs.
+  * [ ] Experience blocks, separated entries, sidebar text, and main text all process HTML correctly.

@@ -6,10 +6,12 @@ FastAPI application — routers map 1:1 to the API contract in
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 import uuid
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, EmailStr
@@ -874,15 +876,63 @@ async def delete_application(
 
 
 # ---------------------------------------------------------------------------
-# Utility: download generated .docx files
+# Utility: download generated files (docx or PDF)
 # ---------------------------------------------------------------------------
 
 
+def _convert_docx_to_pdf(docx_path: Path) -> Path:
+    """Convert a .docx to PDF. Uses docx2pdf (MS Word on macOS/Windows,
+    LibreOffice on Linux). Caches the result so repeated downloads are instant."""
+    pdf_path = docx_path.with_suffix(".pdf")
+    if pdf_path.exists():
+        return pdf_path
+
+    try:
+        from docx2pdf import convert
+        convert(str(docx_path), str(pdf_path))
+    except ImportError:
+        logger.warning("docx2pdf not installed — trying LibreOffice fallback")
+        soffice = shutil.which("soffice") or shutil.which("libreoffice")
+        if not soffice:
+            raise HTTPException(
+                status_code=501,
+                detail="PDF conversion unavailable — install docx2pdf or LibreOffice",
+            )
+        try:
+            subprocess.run(
+                [soffice, "--headless", "--convert-to", "pdf",
+                 "--outdir", str(docx_path.parent), str(docx_path)],
+                check=True, timeout=30, capture_output=True,
+            )
+        except (subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+            logger.exception("LibreOffice PDF conversion failed for %s", docx_path.name)
+            raise HTTPException(status_code=500, detail="PDF conversion failed") from exc
+    except Exception as exc:
+        logger.exception("PDF conversion failed for %s", docx_path.name)
+        raise HTTPException(status_code=500, detail=f"PDF conversion failed: {exc}") from exc
+
+    if not pdf_path.exists():
+        raise HTTPException(status_code=500, detail="PDF conversion produced no output")
+    return pdf_path
+
+
 @app.get("/api/v1/files/{file_name}")
-async def download_file(file_name: str) -> FileResponse:
+async def download_file(
+    file_name: str,
+    format: str = Query("pdf", pattern="^(pdf|docx)$"),
+) -> FileResponse:
     file_path = settings.output_dir / file_name
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(status_code=404, detail="File not found")
+
+    if format == "pdf":
+        pdf_path = _convert_docx_to_pdf(file_path)
+        return FileResponse(
+            path=str(pdf_path),
+            media_type="application/pdf",
+            filename=pdf_path.name,
+        )
+
     return FileResponse(
         path=str(file_path),
         media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

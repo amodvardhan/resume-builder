@@ -218,8 +218,8 @@ export async function deleteApplication(
 // File download (utility endpoint)
 // ---------------------------------------------------------------------------
 
-export function getFileDownloadUrl(fileName: string): string {
+export function getFileDownloadUrl(fileName: string, format: "pdf" | "docx" = "pdf"): string {
   const base =
     import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
-  return `${base}/api/v1/files/${encodeURIComponent(fileName)}`;
+  return `${base}/api/v1/files/${encodeURIComponent(fileName)}?format=${format}`;
 }

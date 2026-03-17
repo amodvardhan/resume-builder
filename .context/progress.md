@@ -118,3 +118,29 @@
   > `SectionBlock` checks `FORMATTABLE_SECTIONS` (skills, education, certifications). Default: shows `FormattedPreview` with "click to edit" hint. On click: swaps to `SectionEditor` (TipTap). Click-outside or "Done" button returns to formatted view.
 * [x] The downloadable `.docx` splits education and certifications on `;` and `\n` into separate paragraphs.
   > Backend utility `_split_entries(text)` uses `re.split(r"[;\n]", text)`. All 5 template builders (classic, modern, minimal, executive, creative) call `_add_separated_entries()` for education and certifications. Modern sidebar uses `_sidebar_text()` per entry with `✓` prefix for certifications.
+
+## REQ-010: Document Quality & PDF Download
+
+* [x] The modern template sidebar covers the full page height in the `.docx`, extending to all pages if content overflows.
+  > `_build_modern_resume` sets `row.height = Inches(11)` with `WD_ROW_HEIGHT_RULE.AT_LEAST` and removes `cantSplit` to allow the row to break across pages. Page dimensions explicitly set to 8.5"×11".
+* [x] All template builders use consistent paragraph spacing.
+  > All 5 builders updated: Normal style `line_spacing = Pt(14)`, `space_after = Pt(6)`. `_add_heading` gets `space_before = Pt(16)`, `space_after = Pt(2)`. `_add_horizontal_rule` gets `space_after = Pt(8)`. Body paragraphs (summary, skills) get explicit `space_after = Pt(6)`.
+* [x] Experience blocks have proper indentation for bullet points and spacing between role titles and content.
+  > `_add_experience_block`: role title gets `space_before = Pt(8)`, `space_after = Pt(2)`. Bullets get `left_indent = Pt(14)`, `space_after = Pt(2)`. Modern template experience lines similarly updated.
+* [x] Download endpoint supports `?format=pdf` (default) and `?format=docx` query parameter.
+  > `GET /api/v1/files/{file_name}?format=pdf|docx` in `main.py`. PDF is the default format. Falls back to docx silently if LibreOffice is unavailable.
+* [x] PDF conversion uses `docx2pdf` (MS Word on macOS/Windows) with LibreOffice fallback and result caching.
+  > `_convert_docx_to_pdf()` uses `docx2pdf.convert()` as primary (works via MS Word AppleScript on macOS). Falls back to LibreOffice headless if `docx2pdf` not installed. Caches result PDF. Previously relied solely on LibreOffice which wasn't available on the user's machine.
+* [x] Frontend download buttons default to PDF with a secondary `.docx` option.
+  > `getFileDownloadUrl(fileName, format)` updated in `client.ts`. Done page shows primary "Resume PDF" + "Cover Letter PDF" buttons and secondary compact ".docx" buttons.
+
+## REQ-011: HTML-to-Rich-Text in Generated Documents
+
+* [x] A `_add_rich_runs()` utility parses `<b>`, `<strong>`, `<i>`, `<em>` tags into proper bold/italic docx runs.
+  > Added `_add_rich_runs()` in `tailor_engine.py` using regex `_KNOWN_TAG_RE` to find formatting tags. Creates separate runs with `bold=True`/`italic=True` for tagged segments. Fast path when no `<` in text.
+* [x] Unknown/unsupported HTML tags are silently stripped from the output.
+  > The regex matches both known tags (b/strong/i/em/u) and any other `<...>` tag. Known tags toggle bold/italic depth; unknown tags are skipped (text between them is preserved, the tag itself is dropped).
+* [x] All five resume template builders and all five cover letter builders use `_add_rich_runs()` for content paragraphs.
+  > Every `doc.add_paragraph(text)` and `p.add_run(text)` call replaced with `p = doc.add_paragraph(); _add_rich_runs(p, text, ...)` across classic, modern, minimal, executive, creative resume and cover letter builders.
+* [x] Experience blocks, separated entries, sidebar text, and main text all process HTML correctly.
+  > `_add_experience_block()`, `_add_separated_entries()`, modern `_sidebar_text()`, modern `_main_text()` all updated to use `_add_rich_runs()`. Added `_strip_html()` utility for empty-line checks on HTML content.
