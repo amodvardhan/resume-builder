@@ -13,6 +13,10 @@ from typing import Any
 import httpx
 
 from src.backend.config import settings
+from src.backend.services.job_integrations._countries import (
+    jooble_locations_for_countries,
+    normalize_adzuna_country_codes,
+)
 from src.backend.services.job_integrations._text import (
     normalize_external_id,
     plain_from_html,
@@ -104,6 +108,7 @@ async def fetch_jooble_jobs(
     role_categories: list[str],
     preferred_locations: list[str],
     keywords: list[str],
+    country_codes: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     api_key = (settings.jooble_api_key or "").strip()
     if not api_key:
@@ -113,69 +118,84 @@ async def fetch_jooble_jobs(
         return []
 
     kw_str = _build_keywords(role_categories, keywords)
-    location = _first_location(preferred_locations)
     page = str(max(1, settings.jooble_page))
     radius = str(settings.jooble_radius_km)
 
-    body: dict[str, Any] = {
-        "keywords": kw_str,
-        "location": location,
-        "radius": radius,
-        "page": page,
-        "companysearch": "false",
-    }
+    resolved_cc = normalize_adzuna_country_codes(country_codes or [])
+    if resolved_cc:
+        locs = jooble_locations_for_countries(resolved_cc)
+    else:
+        loc = _first_location(preferred_locations)
+        locs = [loc] if loc else [""]
 
     url = f"{_JOOBLE_API}/{api_key}"
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    total_count: object | None = None
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        try:
-            resp = await client.post(
-                url,
-                json=body,
-                headers={
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-            )
-        except httpx.RequestError as exc:
-            logger.warning("Jooble request error: %s", exc)
-            return []
+        for location in locs:
+            body: dict[str, Any] = {
+                "keywords": kw_str,
+                "location": location,
+                "radius": radius,
+                "page": page,
+                "companysearch": "false",
+            }
+            try:
+                resp = await client.post(
+                    url,
+                    json=body,
+                    headers={
+                        "Content-Type": "application/json",
+                        "Accept": "application/json",
+                    },
+                )
+            except httpx.RequestError as exc:
+                logger.warning("Jooble request error: %s", exc)
+                continue
 
-        if resp.status_code == 403:
-            logger.warning(
-                "Jooble HTTP 403 — invalid APP_JOOBLE_API_KEY or access denied",
-            )
-            return []
+            if resp.status_code == 403:
+                logger.warning(
+                    "Jooble HTTP 403 — invalid APP_JOOBLE_API_KEY or access denied",
+                )
+                return out
 
-        if resp.status_code >= 400:
-            logger.warning(
-                "Jooble HTTP %s: %s",
-                resp.status_code,
-                resp.text[:500],
-            )
-            return []
+            if resp.status_code >= 400:
+                logger.warning(
+                    "Jooble HTTP %s: %s",
+                    resp.status_code,
+                    resp.text[:500],
+                )
+                continue
 
-        try:
-            data = resp.json()
-        except Exception:
-            logger.warning("Jooble: response is not valid JSON")
-            return []
+            try:
+                data = resp.json()
+            except Exception:
+                logger.warning("Jooble: response is not valid JSON")
+                continue
 
-    jobs_raw = data.get("jobs") or []
-    if not isinstance(jobs_raw, list):
-        return []
+            total_count = data.get("totalCount")
+            jobs_raw = data.get("jobs") or []
+            if not isinstance(jobs_raw, list):
+                continue
 
-    out: list[dict[str, Any]] = []
-    for row in jobs_raw:
-        if not isinstance(row, dict):
-            continue
-        norm = _normalize_job(row)
-        if norm:
-            out.append(norm)
+            for row in jobs_raw:
+                if not isinstance(row, dict):
+                    continue
+                norm = _normalize_job(row)
+                if not norm:
+                    continue
+                key = norm["external_id"]
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append(norm)
 
     logger.info(
-        "Jooble: %d job(s) (totalCount=%s)",
+        "Jooble: %d unique job(s) (totalCount=%s, %d location scope(s))",
         len(out),
-        data.get("totalCount"),
+        total_count,
+        len(locs),
     )
     return out

@@ -12,29 +12,39 @@ interface ResumeDropProps {
     error: Error | null;
     data?: ResumeUploadResponse;
   };
+  /** When true, new uploads are blocked (e.g. stored resume limit reached). */
+  uploadBlocked?: boolean;
+  uploadBlockedMessage?: string;
 }
 
-export default function ResumeDrop({ onUploaded, uploadMutation }: ResumeDropProps) {
+export default function ResumeDrop({
+  onUploaded,
+  uploadMutation,
+  uploadBlocked = false,
+  uploadBlockedMessage = "Remove a saved resume on your profile before uploading another.",
+}: ResumeDropProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(
     (file: File) => {
+      if (uploadBlocked) return;
       const name = file.name.toLowerCase();
       if (!name.endsWith(".docx") && !name.endsWith(".pdf")) return;
       uploadMutation.mutate(file, { onSuccess: onUploaded });
     },
-    [uploadMutation, onUploaded],
+    [uploadMutation, onUploaded, uploadBlocked],
   );
 
   const onDrop = useCallback(
     (e: DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setIsDragOver(false);
+      if (uploadBlocked) return;
       const file = e.dataTransfer.files[0];
       if (file) handleFile(file);
     },
-    [handleFile],
+    [handleFile, uploadBlocked],
   );
 
   const onDragOver = useCallback((e: DragEvent<HTMLDivElement>) => {
@@ -43,7 +53,10 @@ export default function ResumeDrop({ onUploaded, uploadMutation }: ResumeDropPro
   }, []);
 
   const onDragLeave = useCallback(() => setIsDragOver(false), []);
-  const onClickArea = useCallback(() => fileInputRef.current?.click(), []);
+  const onClickArea = useCallback(() => {
+    if (uploadBlocked) return;
+    fileInputRef.current?.click();
+  }, [uploadBlocked]);
 
   const onFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -71,20 +84,41 @@ export default function ResumeDrop({ onUploaded, uploadMutation }: ResumeDropPro
           </div>
           <div className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-primary">{data.original_filename}</span>
+            {uploadBlocked && (
+              <span className="mt-1 block text-[10px] text-secondary">
+                {uploadBlockedMessage}
+              </span>
+            )}
           </div>
           <span className="shrink-0 rounded-full bg-white px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-secondary shadow-sm">
             {data.file_type}
           </span>
           <button
+            type="button"
             onClick={onClickArea}
-            className="shrink-0 rounded-lg p-1.5 text-secondary transition-colors hover:bg-white hover:text-primary"
-            title="Replace resume"
+            disabled={uploadBlocked}
+            className="shrink-0 rounded-lg p-1.5 text-secondary transition-colors hover:bg-white hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+            title={uploadBlocked ? "Storage limit reached" : "Replace resume"}
           >
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
           </button>
           <input ref={fileInputRef} type="file" accept=".docx,.pdf" className="hidden" onChange={onFileChange} />
+        </div>
+      </div>
+    );
+  }
+
+  if (uploadBlocked) {
+    return (
+      <div className="space-y-2">
+        <label className="block text-xs font-medium text-secondary">
+          Your Resume
+        </label>
+        <div className="rounded-xl border border-border-muted bg-muted/40 px-4 py-6 text-center">
+          <p className="text-sm font-medium text-primary">Resume storage is full</p>
+          <p className="mt-1 text-xs text-secondary">{uploadBlockedMessage}</p>
         </div>
       </div>
     );

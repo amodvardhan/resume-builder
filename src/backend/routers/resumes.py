@@ -7,19 +7,22 @@ import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.config import settings
 from src.backend.database import get_session
 from src.backend.models import Resume, User
-from src.backend.schemas import ResumeListItem, ResumeUploadResponse
+from src.backend.schemas import ResumeActivateResponse, ResumeListItem, ResumeUploadResponse
 from src.backend.services.auth_service import get_current_user
 from src.backend.services.resume_parser import extract_resume_text
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["resumes"])
+
+# Stored resumes per user (only one may be active at a time; see is_active).
+MAX_RESUMES_PER_USER = 5
 
 _ALLOWED_RESUME_TYPES = {
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
@@ -40,6 +43,21 @@ async def upload_resume(
     user = await session.get(User, effective_user_id)
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+
+    count_row = await session.execute(
+        select(func.count())
+        .select_from(Resume)
+        .where(Resume.user_id == effective_user_id),
+    )
+    existing = int(count_row.scalar_one() or 0)
+    if existing >= MAX_RESUMES_PER_USER:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"You can store at most {MAX_RESUMES_PER_USER} resumes. "
+                "Delete one before uploading another."
+            ),
+        )
 
     filename = file.filename or "resume"
     if filename.lower().endswith(".docx"):
@@ -135,6 +153,35 @@ async def list_user_resumes(
     ]
 
 
+@router.patch(
+    "/resumes/{resume_id}/activate",
+    response_model=ResumeActivateResponse,
+)
+async def activate_resume(
+    resume_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ResumeActivateResponse:
+    resume = await session.get(Resume, resume_id)
+    if resume is None or resume.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    await session.execute(
+        update(Resume)
+        .where(Resume.user_id == current_user.id, Resume.is_active == True)  # noqa: E712
+        .values(is_active=False)
+    )
+    resume.is_active = True
+    await session.commit()
+    await session.refresh(resume)
+
+    return ResumeActivateResponse(
+        resume_id=resume.id,
+        original_filename=resume.original_filename,
+        is_active=resume.is_active,
+    )
+
+
 @router.delete(
     "/resumes/{resume_id}",
     status_code=204,
@@ -148,7 +195,26 @@ async def delete_resume(
     resume = await session.get(Resume, resume_id)
     if resume is None:
         raise HTTPException(status_code=404, detail="Resume not found")
+    if resume.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    was_active = resume.is_active
+    owner_id = resume.user_id
     file_path = Path(resume.file_path)
     await session.delete(resume)
+    await session.flush()
+
+    if was_active:
+        nxt = (
+            await session.execute(
+                select(Resume)
+                .where(Resume.user_id == owner_id)
+                .order_by(Resume.created_at.desc())
+                .limit(1),
+            )
+        ).scalar_one_or_none()
+        if nxt is not None:
+            nxt.is_active = True
+
     await session.commit()
     file_path.unlink(missing_ok=True)

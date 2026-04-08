@@ -17,6 +17,33 @@ const EXPERIENCE_LEVELS = [
   "Executive",
 ];
 
+/** ISO2 codes supported for Adzuna + Jooble primary search (must match backend allowlist). */
+const TARGET_JOB_MARKETS: { code: string; label: string }[] = [
+  { code: "at", label: "Austria" },
+  { code: "au", label: "Australia" },
+  { code: "be", label: "Belgium" },
+  { code: "br", label: "Brazil" },
+  { code: "ca", label: "Canada" },
+  { code: "ch", label: "Switzerland" },
+  { code: "cn", label: "China" },
+  { code: "de", label: "Germany" },
+  { code: "es", label: "Spain" },
+  { code: "fr", label: "France" },
+  { code: "gb", label: "United Kingdom" },
+  { code: "hk", label: "Hong Kong" },
+  { code: "in", label: "India" },
+  { code: "it", label: "Italy" },
+  { code: "jp", label: "Japan" },
+  { code: "mx", label: "Mexico" },
+  { code: "nl", label: "Netherlands" },
+  { code: "nz", label: "New Zealand" },
+  { code: "pl", label: "Poland" },
+  { code: "ru", label: "Russia" },
+  { code: "sg", label: "Singapore" },
+  { code: "us", label: "United States" },
+  { code: "za", label: "South Africa" },
+];
+
 const SECTION_META: Record<string, { icon: string; description: string }> = {
   Industry: {
     icon: "🏢",
@@ -38,6 +65,11 @@ const SECTION_META: Record<string, { icon: string; description: string }> = {
     icon: "🔑",
     description: "Skills and terms the AI should prioritize.",
   },
+  "Job search countries": {
+    icon: "🌍",
+    description:
+      "Scopes every job source (Adzuna, Jooble, LinkedIn, XING, Naukri Gulf, and any future feeds). Leave empty to use the server default for Adzuna and location text for Jooble; secondary sources are not filtered by country until you choose at least one market.",
+  },
 };
 
 export default function PreferencesPage() {
@@ -52,6 +84,7 @@ export default function PreferencesPage() {
     preferred_locations: [],
     experience_level: null,
     keywords: [],
+    target_country_codes: [],
   });
 
   const [locationInput, setLocationInput] = useState("");
@@ -126,6 +159,19 @@ export default function PreferencesPage() {
       ...prev,
       keywords: prev.keywords.filter((k) => k !== kw),
     }));
+  }, []);
+
+  const toggleTargetCountry = useCallback((code: string) => {
+    setForm((prev) => {
+      const c = code.toLowerCase();
+      const has = prev.target_country_codes.includes(c);
+      return {
+        ...prev,
+        target_country_codes: has
+          ? prev.target_country_codes.filter((x) => x !== c)
+          : [...prev.target_country_codes, c],
+      };
+    });
   }, []);
 
   const handleSave = useCallback(() => {
@@ -248,6 +294,41 @@ export default function PreferencesPage() {
                 : "Select an industry first to see available roles."}
             </p>
           )}
+        </Section>
+
+        {/* Target countries (primary APIs) */}
+        <Section title="Job search countries" stagger="stagger-3">
+          <p className="mb-3 text-xs text-secondary/80">
+            Select one or more countries to scope all integrations: primary APIs
+            use them directly; LinkedIn, XING, Naukri Gulf, and other feeds are
+            filtered by matching location or description text to your selection.
+            If none are selected, behaviour is unchanged (Adzuna uses{" "}
+            <code className="rounded bg-muted px-1 py-0.5 text-[10px]">
+              APP_ADZUNA_COUNTRY
+            </code>
+            ; Jooble uses preferred locations below; secondary sources are not
+            country-filtered).
+          </p>
+          <div className="flex flex-wrap gap-2">
+            {TARGET_JOB_MARKETS.map(({ code, label }) => {
+              const selected = form.target_country_codes.includes(code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => toggleTargetCountry(code)}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-all duration-200 ${
+                    selected
+                      ? "bg-brand text-white shadow-sm"
+                      : "bg-muted text-secondary hover:bg-brand-subtle hover:text-brand"
+                  }`}
+                >
+                  {label}
+                  {selected && <span className="ml-1.5 inline-flex">&times;</span>}
+                </button>
+              );
+            })}
+          </div>
         </Section>
 
         {/* Preferred locations */}

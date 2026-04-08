@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from src.backend.config import job_integrations_configured
 from src.backend.models import JobListing, JobMatch, JobPreference, JobSyncRun, User
 from src.backend.schemas import (
@@ -19,16 +21,20 @@ from src.backend.schemas import (
 
 
 def user_response(user: User) -> UserResponse:
+    raw = getattr(user, "profile_photo_path", None)
+    has_photo = bool(raw and Path(str(raw)).is_file())
     return UserResponse(
         id=user.id,
         full_name=user.full_name,
         email=user.email,
         core_skills=user.core_skills if isinstance(user.core_skills, list) else [],
         is_admin=bool(getattr(user, "is_admin", False)),
+        has_profile_photo=has_photo,
     )
 
 
 def job_preference_response(pref: JobPreference) -> JobPreferenceResponse:
+    tc = pref.target_country_codes if isinstance(pref.target_country_codes, list) else []
     return JobPreferenceResponse(
         id=pref.id,
         user_id=pref.user_id,
@@ -37,6 +43,7 @@ def job_preference_response(pref: JobPreference) -> JobPreferenceResponse:
         preferred_locations=pref.preferred_locations if isinstance(pref.preferred_locations, list) else [],
         experience_level=pref.experience_level,
         keywords=pref.keywords if isinstance(pref.keywords, list) else [],
+        target_country_codes=[str(x) for x in tc],
         created_at=pref.created_at.isoformat(),
         updated_at=pref.updated_at.isoformat(),
     )

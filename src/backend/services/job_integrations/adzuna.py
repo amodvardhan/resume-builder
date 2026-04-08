@@ -15,6 +15,7 @@ from typing import Any
 import httpx
 
 from src.backend.config import settings
+from src.backend.services.job_integrations._countries import normalize_adzuna_country_codes
 from src.backend.services.job_integrations._text import (
     normalize_external_id,
     plain_from_html,
@@ -124,6 +125,7 @@ async def fetch_adzuna_jobs(
     role_categories: list[str],
     preferred_locations: list[str],
     keywords: list[str],
+    country_codes: list[str] | None = None,
 ) -> list[dict[str, Any]]:
     app_id = (settings.adzuna_app_id or "").strip()
     app_key = (settings.adzuna_app_key or "").strip()
@@ -134,72 +136,98 @@ async def fetch_adzuna_jobs(
         )
         return []
 
-    country = (settings.adzuna_country or "gb").strip().lower()
+    resolved = normalize_adzuna_country_codes(country_codes or [])
+    if not resolved:
+        resolved = [(settings.adzuna_country or "gb").strip().lower()]
+
     per_page = max(1, min(50, settings.adzuna_results_per_page))
     max_pairs = max(1, settings.adzuna_max_search_pairs)
+    nc = max(1, len(resolved))
+    pair_limit = max_pairs if nc <= 1 else max(1, max_pairs // nc)
 
-    pairs = _search_pairs(role_categories, preferred_locations, keywords, max_pairs)
+    pairs = _search_pairs(role_categories, preferred_locations, keywords, pair_limit)
     out: list[dict[str, Any]] = []
     seen: set[str] = set()
+    requests_done = 0
+    budget = max_pairs
 
     async with httpx.AsyncClient(timeout=45.0) as client:
         for what, where in pairs:
-            params = {
-                "app_id": app_id,
-                "app_key": app_key,
-                "results_per_page": per_page,
-                "what": what,
-                "content-type": "application/json",
-            }
-            if where:
-                params["where"] = where
+            for country in resolved:
+                if budget <= 0:
+                    break
+                budget -= 1
+                requests_done += 1
+                params = {
+                    "app_id": app_id,
+                    "app_key": app_key,
+                    "results_per_page": per_page,
+                    "what": what,
+                    "content-type": "application/json",
+                }
+                if where:
+                    params["where"] = where
 
-            url = f"{_ADZUNA_BASE}/{country}/search/1"
-            try:
-                resp = await client.get(url, params=params)
-            except httpx.RequestError as exc:
-                logger.warning("Adzuna request error for what=%r where=%r: %s", what, where, exc)
-                continue
-
-            if resp.status_code in (401, 403):
-                logger.warning(
-                    "Adzuna HTTP %s — check APP_ADZUNA_APP_ID / APP_ADZUNA_APP_KEY",
-                    resp.status_code,
-                )
-                return out
-
-            if resp.status_code >= 400:
-                logger.warning(
-                    "Adzuna HTTP %s for what=%r: %s",
-                    resp.status_code,
-                    what,
-                    resp.text[:400],
-                )
-                continue
-
-            try:
-                data = resp.json()
-            except Exception:
-                logger.warning("Adzuna: invalid JSON for what=%r", what)
-                continue
-
-            results = data.get("results") or []
-            if not isinstance(results, list):
-                continue
-
-            for row in results:
-                if not isinstance(row, dict):
+                url = f"{_ADZUNA_BASE}/{country}/search/1"
+                try:
+                    resp = await client.get(url, params=params)
+                except httpx.RequestError as exc:
+                    logger.warning(
+                        "Adzuna request error for country=%s what=%r where=%r: %s",
+                        country,
+                        what,
+                        where,
+                        exc,
+                    )
                     continue
-                norm = _normalize_ad(row)
-                if not norm:
-                    continue
-                key = norm["external_id"]
-                if key in seen:
-                    continue
-                seen.add(key)
-                out.append(norm)
 
-            await asyncio.sleep(0.25)
+                if resp.status_code in (401, 403):
+                    logger.warning(
+                        "Adzuna HTTP %s — check APP_ADZUNA_APP_ID / APP_ADZUNA_APP_KEY",
+                        resp.status_code,
+                    )
+                    return out
 
-    logger.info("Adzuna: collected %d unique job(s) from %d search pair(s)", len(out), len(pairs))
+                if resp.status_code >= 400:
+                    logger.warning(
+                        "Adzuna HTTP %s for country=%s what=%r: %s",
+                        resp.status_code,
+                        country,
+                        what,
+                        resp.text[:400],
+                    )
+                    continue
+
+                try:
+                    data = resp.json()
+                except Exception:
+                    logger.warning("Adzuna: invalid JSON for what=%r", what)
+                    continue
+
+                results = data.get("results") or []
+                if not isinstance(results, list):
+                    continue
+
+                for row in results:
+                    if not isinstance(row, dict):
+                        continue
+                    norm = _normalize_ad(row)
+                    if not norm:
+                        continue
+                    key = norm["external_id"]
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    out.append(norm)
+
+                await asyncio.sleep(0.25)
+            if budget <= 0:
+                break
+
+    logger.info(
+        "Adzuna: collected %d unique job(s) (%d HTTP request(s), up to %d pair cap)",
+        len(out),
+        requests_done,
+        max_pairs,
+    )
     return out

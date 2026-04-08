@@ -136,6 +136,23 @@ async def _apply_schema_migrations() -> None:
             logger.info("Migrated: added is_admin to users (REQ-017)")
 
 
+async def _migrate_users_profile_photo_path() -> None:
+    """Add profile_photo_path for resume headshots."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'users' "
+            "AND column_name = 'profile_photo_path'"
+        ))
+        if col.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE users ADD COLUMN profile_photo_path VARCHAR(1024)"
+            ))
+            logger.info("Migrated: users.profile_photo_path")
+
+
 async def _migrate_job_tables() -> None:
     """Replace crawl-era tables with job_listings / job_sync_runs (integrations)."""
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
@@ -278,6 +295,30 @@ async def _migrate_job_sync_runs_sources_column() -> None:
             logger.info("Migrated: job_sync_runs.last_batch_listing_ids")
 
 
+async def _migrate_job_preferences_target_countries() -> None:
+    """Add target_country_codes JSONB for per-user Adzuna/Jooble country scope."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        has_jp = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_preferences'"
+        ))
+        if has_jp.scalar() is None:
+            return
+        tc = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_preferences' "
+            "AND column_name = 'target_country_codes'"
+        ))
+        if tc.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_preferences ADD COLUMN target_country_codes JSONB "
+                "NOT NULL DEFAULT '[]'::jsonb"
+            ))
+            logger.info("Migrated: job_preferences.target_country_codes")
+
+
 async def _migrate_job_listing_application_metadata() -> None:
     """Add application_closes_at and accepts_applications to job_listings."""
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
@@ -375,6 +416,8 @@ async def _startup() -> None:
     await _migrate_job_tables()
     await _migrate_job_sync_runs_sources_column()
     await _migrate_job_listing_application_metadata()
+    await _migrate_job_preferences_target_countries()
+    await _migrate_users_profile_photo_path()
 
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
     async with engine.begin() as conn:

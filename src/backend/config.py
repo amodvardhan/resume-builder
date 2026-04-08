@@ -74,6 +74,7 @@ class Settings(BaseSettings):
     templates_dir: Path = _PROJECT_ROOT / "storage" / "templates"
     output_dir: Path = _PROJECT_ROOT / "storage" / "output"
     resumes_dir: Path = _PROJECT_ROOT / "storage" / "resumes"
+    profile_photos_dir: Path = _PROJECT_ROOT / "storage" / "profile_photos"
 
 
 settings = Settings()

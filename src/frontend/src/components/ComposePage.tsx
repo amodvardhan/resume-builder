@@ -1,5 +1,5 @@
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
-import MagicDrop from "./MagicDrop";
 import ResumeDrop from "./ResumeDrop";
 import RichEditor from "./RichEditor";
 import SentimentSlider from "./SentimentSlider";
@@ -10,20 +10,29 @@ import {
   useTailorPreview,
   useTailorConfirm,
   useRegenerateSection,
-  useUploadResume,
+  useActivateResume,
   useUserResumes,
+  useUserProfile,
+  useProfilePhotoObjectUrl,
+  resumeKeys,
 } from "../hooks/useResumeEngine";
+import { uploadResume } from "../api/client";
+import { MAX_STORED_RESUMES } from "../constants/resumeLimits";
 import { useReferenceEngine } from "../hooks/useHistory";
 import { extractErrorMessage, getFileDownloadUrl } from "../api/client";
 import type {
   ComposeJobPrefill,
-  TemplateUploadResponse,
   ResumeUploadResponse,
+  ResumeListItem,
   TailorPreviewResponse,
   TailorConfirmResponse,
 } from "../types/api";
 
 export type ComposePhase = "input" | "review" | "done";
+
+type ResumeUploadWithPrior = ResumeUploadResponse & {
+  prevActive: string | null;
+};
 
 type ReferenceEngine = ReturnType<typeof useReferenceEngine>;
 
@@ -46,7 +55,6 @@ export default function ComposePage({
   jobPrefill,
 }: ComposePageProps) {
   const [resumeId, setResumeId] = useState<string | null>(null);
-  const [templateId, setTemplateId] = useState<string | null>(null);
   const [jobTitle, setJobTitle] = useState("");
   const [organization, setOrganization] = useState("");
   const [jobDescriptionHtml, setJobDescriptionHtml] = useState("");
@@ -56,12 +64,48 @@ export default function ComposePage({
   const [draft, setDraft] = useState<TailorPreviewResponse | null>(null);
   const [result, setResult] = useState<TailorConfirmResponse | null>(null);
   const [templateStyle, setTemplateStyle] = useState<string>("classic");
+  const [resumeSwapPrompt, setResumeSwapPrompt] = useState<{
+    newId: string;
+    prevId: string;
+    newFilename: string;
+  } | null>(null);
 
+  const queryClient = useQueryClient();
   const previewMutation = useTailorPreview();
   const confirmMutation = useTailorConfirm();
   const sectionRegenMutation = useRegenerateSection();
-  const resumeUploadMutation = useUploadResume(userId);
+  const activateResumeMutation = useActivateResume(userId);
+  const resumeUploadMutation = useMutation({
+    mutationFn: async (file: File): Promise<ResumeUploadWithPrior> => {
+      const list = queryClient.getQueryData<ResumeListItem[]>(
+        resumeKeys.resumes(userId),
+      );
+      const prevActive =
+        list?.find((r) => r.is_active)?.resume_id ?? null;
+      const data = await uploadResume(file, userId);
+      return { ...data, prevActive };
+    },
+    onSuccess: (payload) => {
+      void queryClient.invalidateQueries({
+        queryKey: resumeKeys.resumes(userId),
+      });
+      if (payload.prevActive && payload.prevActive !== payload.resume_id) {
+        setResumeSwapPrompt({
+          newId: payload.resume_id,
+          prevId: payload.prevActive,
+          newFilename: payload.original_filename,
+        });
+      } else {
+        setResumeId(payload.resume_id);
+      }
+    },
+  });
   const resumesQuery = useUserResumes(userId);
+  const userProfileQuery = useUserProfile(userId);
+  const profilePhotoSrc = useProfilePhotoObjectUrl(
+    userId,
+    userProfileQuery.data?.has_profile_photo,
+  );
 
   const { mode, baselineContext } = refEngine;
 
@@ -98,15 +142,9 @@ export default function ComposePage({
     setJobDescriptionHtml("");
   }
 
-  const handleResumeUploaded = useCallback(
-    (res: ResumeUploadResponse) => setResumeId(res.resume_id),
-    [],
-  );
-
-  const handleTemplateUploaded = useCallback(
-    (res: TemplateUploadResponse) => setTemplateId(res.template_id),
-    [],
-  );
+  const handleResumeUploaded = useCallback((_res: ResumeUploadResponse) => {
+    /* choice handled in resumeUploadMutation.onSuccess */
+  }, []);
 
   const handlePreview = useCallback(() => {
     if (!resumeId) return;
@@ -114,7 +152,6 @@ export default function ComposePage({
       {
         user_id: userId,
         resume_id: resumeId,
-        template_id: templateId ?? undefined,
         template_style: templateStyle,
         job_title: jobTitle,
         organization,
@@ -128,7 +165,7 @@ export default function ComposePage({
         },
       },
     );
-  }, [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation, userId]);
+  }, [resumeId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation, userId]);
 
   const handleConfirm = useCallback(
     (edited: TailorPreviewResponse) => {
@@ -138,7 +175,6 @@ export default function ComposePage({
         {
           user_id: userId,
           resume_id: resumeId,
-          template_id: templateId ?? undefined,
           template_style: templateStyle,
           job_title: jobTitle,
           organization,
@@ -154,7 +190,7 @@ export default function ComposePage({
         },
       );
     },
-    [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation, userId],
+    [resumeId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation, userId],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -163,7 +199,6 @@ export default function ComposePage({
       {
         user_id: userId,
         resume_id: resumeId,
-        template_id: templateId ?? undefined,
         template_style: templateStyle,
         job_title: jobTitle,
         organization,
@@ -176,7 +211,7 @@ export default function ComposePage({
         },
       },
     );
-  }, [resumeId, templateId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation, userId]);
+  }, [resumeId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, previewMutation, userId]);
 
   const handleRegenerateSection = useCallback(
     (sectionId: string, currentContent: string, userInstruction?: string): Promise<string> => {
@@ -215,7 +250,24 @@ export default function ComposePage({
     setJobTitle("");
     setOrganization("");
     setJobDescriptionHtml("");
+    setResumeSwapPrompt(null);
   }, []);
+
+  const handleChooseNewResume = useCallback(() => {
+    if (!resumeSwapPrompt) return;
+    setResumeId(resumeSwapPrompt.newId);
+    setResumeSwapPrompt(null);
+  }, [resumeSwapPrompt]);
+
+  const handleKeepPreviousResume = useCallback(() => {
+    if (!resumeSwapPrompt) return;
+    activateResumeMutation.mutate(resumeSwapPrompt.prevId, {
+      onSuccess: () => {
+        setResumeId(resumeSwapPrompt.prevId);
+        setResumeSwapPrompt(null);
+      },
+    });
+  }, [resumeSwapPrompt, activateResumeMutation]);
 
   const handleClone = useCallback(() => {
     if (!baselineContext) return;
@@ -246,8 +298,13 @@ export default function ComposePage({
   const canSubmitClone =
     isComposing && jobTitle && organization && jobDescriptionHtml && !isCloning;
 
+  const resumeStorageFull =
+    (resumesQuery.data?.length ?? 0) >= MAX_STORED_RESUMES;
+
   const tailorDisabledReason = !resumeId
-    ? "Upload your resume first"
+    ? resumeStorageFull
+      ? "Resume storage full — open Profile to remove a saved file, or pick an existing active resume"
+      : "Upload your resume first"
     : !jobTitle || !organization || !jobDescriptionHtml
     ? "Fill in all job details"
     : null;
@@ -261,6 +318,7 @@ export default function ComposePage({
         <DraftReview
           draft={draft}
           templateStyle={templateStyle as "classic" | "modern" | "minimal" | "executive" | "creative"}
+          profilePhotoSrc={profilePhotoSrc}
           onConfirm={handleConfirm}
           onBack={handleBackToEditor}
           onRegenerate={handleRegenerate}
@@ -299,7 +357,7 @@ export default function ComposePage({
                   Based on: {baselineContext.organization} — {baselineContext.jobTitle}
                 </p>
                 <p className="text-xs text-secondary">
-                  Resume and template will be carried over from the baseline.
+                  Resume content and format from the baseline will be used for the new application.
                 </p>
               </div>
               <button
@@ -320,23 +378,50 @@ export default function ComposePage({
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                       1
                     </span>
-                    <h2 className="text-sm font-semibold text-primary">Upload Documents</h2>
+                    <h2 className="text-sm font-semibold text-primary">Your resume</h2>
                   </div>
                   <p className="mt-1 ml-9 text-xs text-secondary">
-                    Your resume will be analysed by AI and tailored to match the job description.
+                    Upload a .docx or .pdf, or use your active saved resume. Add a professional headshot anytime in Profile — it appears in tailored exports.
                   </p>
                 </div>
                 <div className="space-y-5 p-6">
                   <ResumeDrop
                     onUploaded={handleResumeUploaded}
                     uploadMutation={resumeUploadMutation}
+                    uploadBlocked={resumeStorageFull}
+                    uploadBlockedMessage={`You have ${MAX_STORED_RESUMES} saved resumes. Open Profile to remove one, or use your active resume below.`}
                   />
-                  <div>
-                    <MagicDrop onUploaded={handleTemplateUploaded} />
-                    <p className="mt-1.5 text-[10px] text-secondary/60">
-                      Optional — if skipped, the system will generate a professional document using the selected format below.
-                    </p>
-                  </div>
+                  {resumeSwapPrompt && (
+                    <div className="rounded-xl border border-brand/25 bg-brand-subtle/80 p-4">
+                      <p className="text-sm font-medium text-primary">
+                        You uploaded a new file ({resumeSwapPrompt.newFilename}).
+                      </p>
+                      <p className="mt-1 text-xs text-secondary">
+                        Use it for this application, or keep your previous resume
+                        as the active one for scoring and tailoring.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleChooseNewResume}
+                          disabled={activateResumeMutation.isPending}
+                          className="rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark disabled:opacity-40"
+                        >
+                          Use new upload
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleKeepPreviousResume}
+                          disabled={activateResumeMutation.isPending}
+                          className="rounded-lg border border-border-muted bg-surface px-4 py-2 text-xs font-semibold text-primary shadow-sm transition-colors hover:border-brand/40 disabled:opacity-40"
+                        >
+                          {activateResumeMutation.isPending
+                            ? "Updating…"
+                            : "Keep previous resume active"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -404,7 +489,7 @@ export default function ComposePage({
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                       4
                     </span>
-                    <h2 className="text-sm font-semibold text-primary">Cover Letter Tone</h2>
+                    <h2 className="text-sm font-semibold text-primary">Cover letter tone</h2>
                   </div>
                 </div>
                 <div className="p-6">
@@ -547,6 +632,15 @@ export default function ComposePage({
                   {templateStyle === "modern" ? (
                     <div className="tpl-grid">
                       <div className="tpl-sidebar space-y-5">
+                        {profilePhotoSrc ? (
+                          <div className="flex justify-center pb-1">
+                            <img
+                              src={profilePhotoSrc}
+                              alt=""
+                              className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                            />
+                          </div>
+                        ) : null}
                         {draft.skills && (
                           <div>
                             <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Skills</h3>
@@ -606,6 +700,15 @@ export default function ComposePage({
                     </div>
                   ) : (
                     <div className="px-12 py-10 sm:px-16 sm:py-12">
+                      {profilePhotoSrc ? (
+                        <div className="mb-4 flex justify-end">
+                          <img
+                            src={profilePhotoSrc}
+                            alt=""
+                            className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                          />
+                        </div>
+                      ) : null}
                       {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
                         <div className="tpl-header">
                           <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">

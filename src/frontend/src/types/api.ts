@@ -17,6 +17,8 @@ export interface UserProfile {
   email: string;
   core_skills: string[];
   is_admin?: boolean;
+  /** True when a headshot is stored — used in resume preview and exports */
+  has_profile_photo?: boolean;
 }
 
 export interface UserCreatePayload {
@@ -65,6 +67,12 @@ export interface ResumeListItem {
   file_type: "docx" | "pdf";
   is_active: boolean;
   created_at: string;
+}
+
+export interface ResumeActivateResponse {
+  resume_id: string;
+  original_filename: string;
+  is_active: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -326,6 +334,8 @@ export interface JobPreferences {
   preferred_locations: string[];
   experience_level: string | null;
   keywords: string[];
+  /** ISO 3166-1 alpha-2; scopes Adzuna + Jooble job search when set */
+  target_country_codes: string[];
 }
 
 // ---------------------------------------------------------------------------

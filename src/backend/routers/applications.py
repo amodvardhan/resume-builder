@@ -28,6 +28,7 @@ from src.backend.schemas import (
 )
 from src.backend.services.auth_service import get_current_user
 from src.backend.services.history_service import clone_application
+from src.backend.services.profile_photo import resolved_photo_path
 from src.backend.services.resume_parser import html_to_plain_text
 from src.backend.services.tailor_engine import (
     finalize_document,
@@ -39,6 +40,12 @@ from src.backend.services.tailor_engine import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["applications"])
+
+
+def _profile_photo_path_for_user(user: User | None) -> Path | None:
+    if user is None:
+        return None
+    return resolved_photo_path(getattr(user, "profile_photo_path", None))
 
 
 # ---------------------------------------------------------------------------
@@ -72,6 +79,7 @@ async def tailor(
 
     core_skills: list[str] = user.core_skills if isinstance(user.core_skills, list) else []
     jd_plain_text = html_to_plain_text(payload.job_description_html)
+    photo_path = _profile_photo_path_for_user(user)
 
     try:
         result = await tailor_resume(
@@ -83,6 +91,7 @@ async def tailor(
             cover_letter_sentiment=payload.cover_letter_sentiment,
             template_path=template_path,
             template_style=payload.template_style,
+            profile_photo_path=photo_path,
         )
     except Exception:
         logger.exception("Tailoring engine failed")
@@ -167,6 +176,10 @@ async def tailor_confirm(
 ) -> TailorConfirmResponse:
     effective_user_id = current_user.id
 
+    user = await session.get(User, effective_user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
     template_path: Path | None = None
     if payload.template_id is not None:
         template = await session.get(Template, payload.template_id)
@@ -189,6 +202,7 @@ async def tailor_confirm(
             template_path=template_path,
             content=content,
             template_style=payload.template_style,
+            profile_photo_path=_profile_photo_path_for_user(user),
         )
     except Exception:
         logger.exception("Document finalization failed")

@@ -8,9 +8,11 @@ browser dependencies, no OS permission prompts).
 
 from __future__ import annotations
 
+import base64
 import re
 import uuid
 from html import escape as _esc
+from pathlib import Path
 from typing import Any
 
 from ..config import settings
@@ -197,6 +199,15 @@ body {
   padding: 0.18rem 0.45rem; border-radius: 0.18rem; margin-bottom: 0.4rem;
 }
 
+.profile-photo-wrap { text-align: right; margin-bottom: 0.5rem; }
+.profile-photo-img {
+  width: 1.15in; height: 1.15in; object-fit: cover;
+  border-radius: 4px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+.tpl-modern .profile-photo-wrap { text-align: center; margin-bottom: 0.55rem; }
+.tpl-minimal .profile-photo-img { border-color: rgba(0,0,0,0.15); }
+
 /* ═══════════ SKILL PILLS ══════════════════════════════════════════ */
 .skill-pills { display: flex; flex-wrap: wrap; gap: 0.3rem; }
 .skill-pill {
@@ -292,19 +303,35 @@ def _section(heading: str, body: str) -> str:
     )
 
 
+def _profile_photo_html_fragment(photo_path: Path | None) -> str:
+    if not photo_path or not photo_path.is_file():
+        return ""
+    b64 = base64.standard_b64encode(photo_path.read_bytes()).decode("ascii")
+    src = f"data:image/jpeg;base64,{b64}"
+    return (
+        '<div class="profile-photo-wrap">'
+        f'<img src="{src}" alt="" class="profile-photo-img" />'
+        "</div>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Full-page HTML builders
 # ---------------------------------------------------------------------------
 
 
-def _resume_html(content: dict[str, Any], style: str) -> str:
+def _resume_html(
+    content: dict[str, Any],
+    style: str,
+    profile_photo_path: Path | None = None,
+) -> str:
     """Build full-page HTML for the resume, matching the UI preview exactly."""
     tpl = style or "classic"
 
     if tpl == "modern":
-        body = _modern_resume_html(content)
+        body = _modern_resume_html(content, profile_photo_path)
     else:
-        body = _single_col_resume_html(content, tpl)
+        body = _single_col_resume_html(content, tpl, profile_photo_path)
 
     return (
         "<!DOCTYPE html>"
@@ -316,8 +343,12 @@ def _resume_html(content: dict[str, Any], style: str) -> str:
     )
 
 
-def _modern_resume_html(content: dict[str, Any]) -> str:
+def _modern_resume_html(
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> str:
     sidebar_parts: list[str] = []
+    photo_frag = _profile_photo_html_fragment(profile_photo_path)
     if content.get("skills"):
         sidebar_parts.append(_section("Skills", _skills_html(content["skills"])))
     if content.get("education"):
@@ -339,7 +370,9 @@ def _modern_resume_html(content: dict[str, Any]) -> str:
     if exps:
         main_parts.append(_experiences_html(exps))
 
-    sidebar_inner = '<div class="sections">' + "".join(sidebar_parts) + "</div>"
+    sidebar_inner = (
+        '<div class="sections">' + photo_frag + "".join(sidebar_parts) + "</div>"
+    )
     main_inner = '<div class="sections">' + "".join(main_parts) + "</div>"
 
     return (
@@ -351,8 +384,13 @@ def _modern_resume_html(content: dict[str, Any]) -> str:
     )
 
 
-def _single_col_resume_html(content: dict[str, Any], tpl: str) -> str:
+def _single_col_resume_html(
+    content: dict[str, Any],
+    tpl: str,
+    profile_photo_path: Path | None = None,
+) -> str:
     header = ""
+    photo_frag = _profile_photo_html_fragment(profile_photo_path)
     if tpl == "executive":
         header = (
             '<div class="tpl-header">'
@@ -400,7 +438,7 @@ def _single_col_resume_html(content: dict[str, Any], tpl: str) -> str:
 
     return (
         f'<div class="doc-page tpl-{_esc(tpl)}">'
-        f'<div class="content">{header}{sections}</div>'
+        f'<div class="content">{photo_frag}{header}{sections}</div>'
         "</div>"
     )
 
@@ -446,13 +484,21 @@ def _cover_letter_html(text: str, style: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def build_resume_pdf(content: dict[str, Any], template_style: str | None = None) -> str:
+def build_resume_pdf(
+    content: dict[str, Any],
+    template_style: str | None = None,
+    profile_photo_path: Path | None = None,
+) -> str:
     """Render the resume to PDF via WeasyPrint. Returns the output filename."""
     from weasyprint import HTML
 
     settings.output_dir.mkdir(parents=True, exist_ok=True)
 
-    html_str = _resume_html(content, template_style or "classic")
+    html_str = _resume_html(
+        content,
+        template_style or "classic",
+        profile_photo_path=profile_photo_path,
+    )
     filename = f"{uuid.uuid4()}.pdf"
     path = settings.output_dir / filename
     HTML(string=html_str).write_pdf(str(path))

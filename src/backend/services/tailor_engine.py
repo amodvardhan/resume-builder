@@ -477,6 +477,22 @@ def _split_entries(text: str) -> list[str]:
     return [e.strip() for e in re.split(r"[;\n]", text) if e.strip()]
 
 
+def _prepend_profile_photo_block(doc: Any, photo_path: Path) -> None:
+    """Right-aligned headshot at the top of the document body."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+
+    if not photo_path.is_file():
+        return
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run = p.add_run()
+    run.add_picture(str(photo_path), width=Inches(1.15))
+    p.paragraph_format.space_after = Pt(10)
+    doc.element.body.insert(0, p._element)
+
+
 def _add_separated_entries(doc_or_cell: Any, entries: list[str], font_size: float = 10, font_name: str = "Calibri") -> None:
     """Add multiple entries as separate paragraphs with clear spacing."""
     from docx.shared import Pt
@@ -490,7 +506,11 @@ def _add_separated_entries(doc_or_cell: Any, entries: list[str], font_size: floa
 # ── Style-specific resume builders ────────────────────────────────────────
 
 
-def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
+def _build_classic_resume(
+    doc: Any,
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> None:
     from docx.shared import Pt, Inches, RGBColor
 
     for section in doc.sections:
@@ -506,6 +526,9 @@ def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
     style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
+
+    if profile_photo_path and profile_photo_path.is_file():
+        _prepend_profile_photo_block(doc, profile_photo_path)
 
     if content.get("summary"):
         _add_heading(doc, "Professional Summary")
@@ -539,7 +562,11 @@ def _build_classic_resume(doc: Any, content: dict[str, Any]) -> None:
         _add_separated_entries(doc, _split_entries(content["certifications"]))
 
 
-def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
+def _build_modern_resume(
+    doc: Any,
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> None:
     """Two-column layout: 30% sidebar flush-left, 70% main content."""
     from docx.shared import Pt, Inches, RGBColor, Cm, Emu
     from docx.enum.table import WD_TABLE_ALIGNMENT, WD_ROW_HEIGHT_RULE
@@ -609,6 +636,16 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
         qn("w:val"): "clear",
     })
     tcPr_sb.append(shading)
+
+    if profile_photo_path and profile_photo_path.is_file():
+        from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+        p_ph = sidebar.add_paragraph()
+        p_ph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        r_ph = p_ph.add_run()
+        r_ph.add_picture(str(profile_photo_path), width=Inches(1.05))
+        p_ph.paragraph_format.space_before = Pt(12)
+        p_ph.paragraph_format.space_after = Pt(12)
 
     def _sidebar_heading(text: str) -> None:
         p = sidebar.add_paragraph()
@@ -706,7 +743,11 @@ def _build_modern_resume(doc: Any, content: dict[str, Any]) -> None:
                     )
 
 
-def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
+def _build_minimal_resume(
+    doc: Any,
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> None:
     """ATS-friendly: no colors, no decorations, maximum compatibility."""
     from docx.shared import Pt, Inches, RGBColor
 
@@ -723,6 +764,9 @@ def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
     style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
+
+    if profile_photo_path and profile_photo_path.is_file():
+        _prepend_profile_photo_block(doc, profile_photo_path)
 
     def _minimal_heading(text: str) -> None:
         p = doc.add_paragraph()
@@ -761,7 +805,11 @@ def _build_minimal_resume(doc: Any, content: dict[str, Any]) -> None:
         _add_separated_entries(doc, _split_entries(content["certifications"]), font_size=10.5, font_name="Arial")
 
 
-def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
+def _build_executive_resume(
+    doc: Any,
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> None:
     """Premium layout with a dark header band and strong visual hierarchy."""
     from docx.shared import Pt, Inches, RGBColor
 
@@ -778,6 +826,9 @@ def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
     style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
+
+    if profile_photo_path and profile_photo_path.is_file():
+        _prepend_profile_photo_block(doc, profile_photo_path)
 
     # Dark header band
     header_table = doc.add_table(rows=1, cols=1)
@@ -832,7 +883,11 @@ def _build_executive_resume(doc: Any, content: dict[str, Any]) -> None:
         _add_separated_entries(doc, _split_entries(content["certifications"]))
 
 
-def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
+def _build_creative_resume(
+    doc: Any,
+    content: dict[str, Any],
+    profile_photo_path: Path | None = None,
+) -> None:
     """Bold design with accent color headings and a colored top band."""
     from docx.shared import Pt, Inches, RGBColor
 
@@ -849,6 +904,9 @@ def _build_creative_resume(doc: Any, content: dict[str, Any]) -> None:
     style.paragraph_format.space_after = Pt(6)
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
+
+    if profile_photo_path and profile_photo_path.is_file():
+        _prepend_profile_photo_block(doc, profile_photo_path)
 
     # Gradient-style accent bar at top
     bar_table = doc.add_table(rows=1, cols=2)
@@ -903,13 +961,17 @@ _STYLE_BUILDERS: dict[str, Any] = {
 }
 
 
-def build_resume_docx(content: dict[str, Any], template_style: str | None = None) -> str:
+def build_resume_docx(
+    content: dict[str, Any],
+    template_style: str | None = None,
+    profile_photo_path: Path | None = None,
+) -> str:
     """Build a styled resume docx from scratch using the selected gallery template."""
     settings.output_dir.mkdir(parents=True, exist_ok=True)
 
     doc = Document()
     builder = _STYLE_BUILDERS.get(template_style or "classic", _build_classic_resume)
-    builder(doc, content)
+    builder(doc, content, profile_photo_path)
 
     output_filename = f"{uuid.uuid4()}.docx"
     output_path = settings.output_dir / output_filename
@@ -1335,6 +1397,7 @@ def finalize_document(
     template_path: Path | None,
     content: dict[str, Any],
     template_style: str | None = None,
+    profile_photo_path: Path | None = None,
 ) -> dict[str, str]:
     """
     Phase 2 of human-in-the-loop: take the (possibly user-edited) content
@@ -1348,6 +1411,7 @@ def finalize_document(
     Returns ``{"resume_url": str, "cover_letter_url": str}``.
     """
     from .pdf_renderer import build_resume_pdf, build_cover_letter_pdf
+    from .profile_photo import prepend_photo_to_docx_file
 
     if template_path and template_path.exists():
         resume_fields: dict[str, str] = {}
@@ -1361,13 +1425,23 @@ def finalize_document(
         else:
             resume_fields["experience_1"] = str(experiences)
         resume_filename = inject_into_template(template_path, resume_fields)
+        if profile_photo_path and profile_photo_path.is_file():
+            prepend_photo_to_docx_file(settings.output_dir / resume_filename, profile_photo_path)
     else:
-        resume_filename = build_resume_docx(content, template_style=template_style)
+        resume_filename = build_resume_docx(
+            content,
+            template_style=template_style,
+            profile_photo_path=profile_photo_path,
+        )
 
     cover_letter_text = content.get("cover_letter", "")
     cl_filename = build_cover_letter_docx(cover_letter_text, template_style=template_style) if cover_letter_text else ""
 
-    resume_pdf = build_resume_pdf(content, template_style=template_style)
+    resume_pdf = build_resume_pdf(
+        content,
+        template_style=template_style,
+        profile_photo_path=profile_photo_path,
+    )
     cl_pdf = build_cover_letter_pdf(cover_letter_text, template_style=template_style) if cover_letter_text else ""
 
     return {
@@ -1389,6 +1463,7 @@ async def tailor_resume(
     template_path: Path | None,
     template_style: str | None = None,
     history_context: str = "",
+    profile_photo_path: Path | None = None,
 ) -> dict[str, str]:
     """
     Full pipeline (kept for backward-compat with clone flow):
@@ -1411,6 +1486,7 @@ async def tailor_resume(
         template_path=template_path,
         content=draft,
         template_style=template_style,
+        profile_photo_path=profile_photo_path,
     )
 
     return {

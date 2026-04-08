@@ -50,6 +50,7 @@ async def upsert_preferences(
         pref.preferred_locations = payload.preferred_locations
         pref.experience_level = payload.experience_level
         pref.keywords = payload.keywords
+        pref.target_country_codes = payload.target_country_codes
         pref.updated_at = datetime.now(timezone.utc)
     else:
         pref = JobPreference(
@@ -60,6 +61,7 @@ async def upsert_preferences(
             preferred_locations=payload.preferred_locations,
             experience_level=payload.experience_level,
             keywords=payload.keywords,
+            target_country_codes=payload.target_country_codes,
         )
         session.add(pref)
 

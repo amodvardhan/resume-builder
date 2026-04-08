@@ -10,6 +10,7 @@ import type {
   RegenerateSectionRequest,
   RegenerateSectionResponse,
   RegisterResponse,
+  ResumeActivateResponse,
   ResumeListItem,
   ResumeUploadResponse,
   TailorConfirmRequest,
@@ -178,6 +179,35 @@ export async function updateUser(
   return data;
 }
 
+export async function uploadProfilePhoto(
+  userId: string,
+  file: File,
+): Promise<UserProfile> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await api.post<UserProfile>(
+    `/api/v1/users/${userId}/profile-photo`,
+    form,
+    { headers: { "Content-Type": "multipart/form-data" } },
+  );
+  return data;
+}
+
+export async function deleteProfilePhoto(userId: string): Promise<UserProfile> {
+  const { data } = await api.delete<UserProfile>(
+    `/api/v1/users/${userId}/profile-photo`,
+  );
+  return data;
+}
+
+export async function fetchProfilePhotoBlob(userId: string): Promise<Blob> {
+  const { data } = await api.get<Blob>(
+    `/api/v1/users/${userId}/profile-photo`,
+    { responseType: "blob" },
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // §3.2  Template Management
 // ---------------------------------------------------------------------------
@@ -229,6 +259,15 @@ export async function getUserResumes(
 
 export async function deleteResume(resumeId: string): Promise<void> {
   await api.delete(`/api/v1/resumes/${resumeId}`);
+}
+
+export async function activateResume(
+  resumeId: string,
+): Promise<ResumeActivateResponse> {
+  const { data } = await api.patch<ResumeActivateResponse>(
+    `/api/v1/resumes/${resumeId}/activate`,
+  );
+  return data;
 }
 
 // ---------------------------------------------------------------------------

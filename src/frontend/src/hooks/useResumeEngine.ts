@@ -1,5 +1,8 @@
+import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  deleteProfilePhoto,
+  fetchProfilePhotoBlob,
   getUser,
   getUserResumes,
   regenerateSectionApi,
@@ -7,12 +10,16 @@ import {
   tailorPreview,
   tailorResume,
   updateUser,
+  uploadProfilePhoto,
+  activateResume,
+  deleteResume,
   uploadResume,
   uploadTemplate,
 } from "../api/client";
 import type {
   RegenerateSectionRequest,
   RegenerateSectionResponse,
+  ResumeActivateResponse,
   ResumeListItem,
   ResumeUploadResponse,
   TailorConfirmRequest,
@@ -69,6 +76,84 @@ export function useUpdateUser(userId: string | null) {
   });
 }
 
+/** Fetches the authenticated user’s headshot as a blob URL for `<img src>`. Revokes on change/unmount. */
+export function useProfilePhotoObjectUrl(
+  userId: string | null,
+  hasPhoto: boolean | undefined,
+): string | null {
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!userId || !hasPhoto) {
+      setObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+      return;
+    }
+
+    let cancelled = false;
+
+    fetchProfilePhotoBlob(userId)
+      .then((blob) => {
+        if (cancelled) return;
+        const next = URL.createObjectURL(blob);
+        setObjectUrl((prev) => {
+          if (prev) URL.revokeObjectURL(prev);
+          return next;
+        });
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setObjectUrl((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return null;
+          });
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      setObjectUrl((prev) => {
+        if (prev) URL.revokeObjectURL(prev);
+        return null;
+      });
+    };
+  }, [userId, hasPhoto]);
+
+  return objectUrl;
+}
+
+export function useUploadProfilePhoto(userId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation<UserProfile, Error, File>({
+    mutationFn: (file) => uploadProfilePhoto(userId!, file),
+    onSuccess: () => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: resumeKeys.user(userId),
+        });
+      }
+    },
+  });
+}
+
+export function useDeleteProfilePhoto(userId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation<UserProfile, Error, void>({
+    mutationFn: () => deleteProfilePhoto(userId!),
+    onSuccess: () => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: resumeKeys.user(userId),
+        });
+      }
+    },
+  });
+}
+
 // ---------------------------------------------------------------------------
 // §3.2  Template upload mutation
 // ---------------------------------------------------------------------------
@@ -104,6 +189,36 @@ export function useUserResumes(userId: string | null) {
     queryFn: () => getUserResumes(userId!),
     enabled: !!userId,
     staleTime: 30_000,
+  });
+}
+
+export function useActivateResume(userId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation<ResumeActivateResponse, Error, string>({
+    mutationFn: (resumeId) => activateResume(resumeId),
+    onSuccess: () => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: resumeKeys.resumes(userId),
+        });
+      }
+    },
+  });
+}
+
+export function useDeleteResume(userId: string | null) {
+  const queryClient = useQueryClient();
+
+  return useMutation<void, Error, string>({
+    mutationFn: (resumeId) => deleteResume(resumeId),
+    onSuccess: () => {
+      if (userId) {
+        queryClient.invalidateQueries({
+          queryKey: resumeKeys.resumes(userId),
+        });
+      }
+    },
   });
 }
 

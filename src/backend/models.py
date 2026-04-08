@@ -37,6 +37,10 @@ class User(Base):
         default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
+    profile_photo_path: Mapped[str | None] = mapped_column(
+        String(1024),
+        nullable=True,
+    )
 
 
 class Template(Base):
@@ -160,6 +164,11 @@ class JobPreference(Base):
     )
     keywords: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default="[]"
+    )
+    target_country_codes: Mapped[dict] = mapped_column(
+        JSONB,
+        nullable=False,
+        server_default="[]",
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

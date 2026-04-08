@@ -14,6 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.database import async_session_factory
 from src.backend.models import JobListing, JobPreference, JobSyncRun
+from src.backend.services.job_integrations._countries import (
+    job_dict_matches_target_countries,
+    normalize_adzuna_country_codes,
+)
 from src.backend.services.job_integrations._text import normalize_external_id
 from src.backend.services.job_integrations.adzuna import fetch_adzuna_jobs
 from src.backend.services.job_integrations.jooble import fetch_jooble_jobs
@@ -174,6 +178,10 @@ async def run_job_sync_for_user(user_id: uuid.UUID) -> uuid.UUID:
         role_category = role_cats[0] if role_cats else None
         keywords = _as_str_list(pref.keywords)
         locations = _as_str_list(pref.preferred_locations)
+        target_cc = normalize_adzuna_country_codes(
+            _as_str_list(getattr(pref, "target_country_codes", None)),
+        )
+        country_kwarg = target_cc if target_cc else None
 
         run = JobSyncRun(
             user_id=user_id,
@@ -193,6 +201,7 @@ async def run_job_sync_for_user(user_id: uuid.UUID) -> uuid.UUID:
                     role_categories=role_cats,
                     preferred_locations=locations,
                     keywords=keywords,
+                    country_codes=country_kwarg,
                 ),
             )
             jo_task = asyncio.create_task(
@@ -200,6 +209,7 @@ async def run_job_sync_for_user(user_id: uuid.UUID) -> uuid.UUID:
                     role_categories=role_cats,
                     preferred_locations=locations,
                     keywords=keywords,
+                    country_codes=country_kwarg,
                 ),
             )
             ad, jo = await asyncio.gather(ad_task, jo_task, return_exceptions=True)
@@ -240,7 +250,11 @@ async def run_job_sync_for_user(user_id: uuid.UUID) -> uuid.UUID:
                     j.setdefault("accepts_applications", True)
                     j.setdefault("application_closes_at", None)
                     j["ingested_at"] = datetime.now(timezone.utc)
-                    if _keyword_match(j, keywords) and job_dict_is_visible(j):
+                    if (
+                        _keyword_match(j, keywords)
+                        and job_dict_is_visible(j)
+                        and job_dict_matches_target_countries(j, target_cc)
+                    ):
                         combined.append(j)
 
             jobs_found = len(combined)

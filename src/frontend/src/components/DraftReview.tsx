@@ -22,6 +22,8 @@ type TemplateStyle = "classic" | "modern" | "minimal" | "executive" | "creative"
 interface DraftReviewProps {
   draft: TailorPreviewResponse;
   templateStyle?: TemplateStyle;
+  /** Optional headshot (object URL) from Profile — matches PDF/DOCX export */
+  profilePhotoSrc?: string | null;
   onConfirm: (edited: TailorPreviewResponse) => void;
   onBack: () => void;
   onRegenerate?: () => void;
@@ -1080,6 +1082,7 @@ function ComparisonPanel({
 export default function DraftReview({
   draft,
   templateStyle = "classic",
+  profilePhotoSrc,
   onConfirm,
   onBack,
   onRegenerate,
@@ -1246,6 +1249,15 @@ export default function DraftReview({
               {isModern ? (
                 <div className="tpl-grid">
                   <div className="tpl-sidebar space-y-5">
+                    {profilePhotoSrc ? (
+                      <div className="flex justify-center pb-1">
+                        <img
+                          src={profilePhotoSrc}
+                          alt=""
+                          className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                        />
+                      </div>
+                    ) : null}
                     {sidebarSections.map(renderSectionBlock)}
                   </div>
                   <div className="tpl-main space-y-6">
@@ -1254,6 +1266,15 @@ export default function DraftReview({
                 </div>
               ) : (
                 <div className="px-12 py-10 sm:px-16 sm:py-12">
+                  {profilePhotoSrc ? (
+                    <div className="mb-4 flex justify-end">
+                      <img
+                        src={profilePhotoSrc}
+                        alt=""
+                        className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                      />
+                    </div>
+                  ) : null}
                   {(templateStyle === "executive" || templateStyle === "creative") && (
                     <div className="tpl-header">
                       <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">

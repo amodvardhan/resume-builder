@@ -38,6 +38,7 @@ class UserResponse(BaseModel):
     email: str
     core_skills: list[str]
     is_admin: bool = False
+    has_profile_photo: bool = False
 
 
 class TokenResponse(BaseModel):
@@ -83,6 +84,12 @@ class ResumeListItem(BaseModel):
     file_type: str
     is_active: bool
     created_at: str
+
+
+class ResumeActivateResponse(BaseModel):
+    resume_id: uuid.UUID
+    original_filename: str
+    is_active: bool
 
 
 # ---------------------------------------------------------------------------
@@ -223,6 +230,7 @@ class JobPreferenceRequest(BaseModel):
     preferred_locations: list[str] = []
     experience_level: str | None = None
     keywords: list[str] = []
+    target_country_codes: list[str] = []
 
 
 class JobPreferenceResponse(BaseModel):
@@ -233,6 +241,7 @@ class JobPreferenceResponse(BaseModel):
     preferred_locations: list[str]
     experience_level: str | None
     keywords: list[str]
+    target_country_codes: list[str]
     created_at: str
     updated_at: str
 

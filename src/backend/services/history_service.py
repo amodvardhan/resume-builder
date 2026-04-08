@@ -14,6 +14,7 @@ from pathlib import Path
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.models import Application, Resume, Template, User
+from src.backend.services.profile_photo import resolved_photo_path
 from src.backend.services.resume_parser import html_to_plain_text
 from src.backend.services.tailor_engine import tailor_resume
 
@@ -78,6 +79,7 @@ async def clone_application(
     core_skills: list[str] = user.core_skills if isinstance(user.core_skills, list) else []
     history_context = _build_history_context(source)
     jd_plain_text = html_to_plain_text(new_job_description_html)
+    photo_path = resolved_photo_path(getattr(user, "profile_photo_path", None))
 
     result = await tailor_resume(
         core_skills=core_skills,
@@ -88,6 +90,7 @@ async def clone_application(
         cover_letter_sentiment=source.cover_letter_sentiment,
         template_path=template_path,
         history_context=history_context,
+        profile_photo_path=photo_path,
     )
 
     new_app = Application(
