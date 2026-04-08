@@ -781,3 +781,119 @@ body {
   border-radius: 0.25rem;
   margin-bottom: 0.5rem;
 }
+
+/* ── Editorial Teal (folio) ── */
+.tpl-folio .tpl-header {
+  border-left: 4px solid #0f766e;
+  padding: 0.75rem 1rem;
+  margin: -2.5rem -4rem 1.25rem -4rem;
+  background: linear-gradient(90deg, rgba(15, 118, 110, 0.07), transparent);
+}
+@media (min-width: 640px) {
+  .tpl-folio .tpl-header {
+    margin: -3rem -4rem 1.25rem -4rem;
+  }
+}
+.tpl-folio .tpl-section-heading {
+  font-size: 0.625rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #0f766e;
+  border-bottom: 1px solid rgba(15, 118, 110, 0.28);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.tpl-folio .skill-pill {
+  border-radius: 0.25rem;
+  background-color: rgba(15, 118, 110, 0.1);
+  color: #0f766e;
+}
+.tpl-folio .cert-icon {
+  color: #0f766e;
+}
+
+/* ── Night Aurora (nova) ── */
+.tpl-nova .tpl-header {
+  background: linear-gradient(90deg, #0b1120 0%, #1e293b 100%);
+  color: #fff;
+  padding: 1rem 1.5rem;
+  margin: -2.5rem -4rem 1.5rem -4rem;
+  border-bottom: 3px solid #22d3ee;
+  border-radius: 0.25rem 0.25rem 0 0;
+}
+@media (min-width: 640px) {
+  .tpl-nova .tpl-header {
+    margin: -3rem -4rem 1.5rem -4rem;
+  }
+}
+.tpl-nova .tpl-section-heading {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #0891b2;
+  border-left: 3px solid #22d3ee;
+  padding-left: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+.tpl-nova .skill-pill {
+  border-radius: 0.15rem;
+  background-color: rgba(8, 145, 178, 0.09);
+  color: #0e7490;
+}
+.tpl-nova .cert-icon {
+  color: #0891b2;
+}
+
+/* ── Signal Tech ── */
+.tpl-signal .tpl-header {
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.tpl-signal .tpl-section-heading {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #0f172a;
+  margin-bottom: 0.5rem;
+}
+.tpl-signal .skill-pill {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.5625rem;
+  border-radius: 0.125rem;
+  background-color: rgba(15, 23, 42, 0.06);
+  color: #0f172a;
+}
+.tpl-signal .cert-icon {
+  color: #0f172a;
+}
+
+/* ── Atlas International ── */
+.tpl-atlas .tpl-header {
+  text-align: center;
+  border-bottom: 1px solid #1e3a5f;
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.25rem;
+}
+.tpl-atlas .tpl-section-heading {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #1e3a5f;
+  border-bottom: 1px solid rgba(30, 58, 95, 0.22);
+  padding-bottom: 0.25rem;
+  margin-bottom: 0.5rem;
+}
+.tpl-atlas .skill-pill {
+  border-radius: 9999px;
+  background-color: rgba(30, 58, 95, 0.08);
+  color: #1e3a5f;
+}
+.tpl-atlas .cert-icon {
+  color: #1e3a5f;
+}

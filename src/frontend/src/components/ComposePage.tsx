@@ -19,6 +19,8 @@ import {
 } from "../hooks/useResumeEngine";
 import { uploadResume } from "../api/client";
 import { MAX_STORED_RESUMES } from "../constants/resumeLimits";
+import type { TemplateStyle } from "../constants/templateStyles";
+import { getTemplatePreviewHeader } from "../constants/templateStyles";
 import { useReferenceEngine } from "../hooks/useHistory";
 import { downloadGeneratedFile, extractErrorMessage } from "../api/client";
 import {
@@ -323,7 +325,7 @@ export default function ComposePage({
       {composePhase === "review" && draft && (
         <DraftReview
           draft={draft}
-          templateStyle={templateStyle as "classic" | "modern" | "minimal" | "executive" | "creative"}
+          templateStyle={templateStyle as TemplateStyle}
           profilePhotoSrc={profilePhotoSrc}
           resumeContact={resumeContact}
           onConfirm={handleConfirm}
@@ -744,10 +746,18 @@ export default function ComposePage({
                           </div>
                         ) : null}
                       </div>
-                      {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
+                      {getTemplatePreviewHeader(templateStyle) && (
                         <div className="tpl-header">
-                          <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
-                            Tailored Resume
+                          <div
+                            className={
+                              templateStyle === "executive" ||
+                              templateStyle === "creative" ||
+                              templateStyle === "nova"
+                                ? "text-[10px] font-medium uppercase tracking-widest text-white/90"
+                                : "text-[10px] font-medium uppercase tracking-widest text-secondary/75"
+                            }
+                          >
+                            {getTemplatePreviewHeader(templateStyle)}
                           </div>
                         </div>
                       )}

@@ -242,6 +242,87 @@ body {
   padding: 0.18rem 0.45rem; border-radius: 0.18rem; margin-bottom: 0.4rem;
 }
 
+/* ═══════════ FOLIO (editorial teal) ═══════════════════════════════ */
+.tpl-folio .content { padding: 0in 0.85in 0.55in 0.85in; }
+.tpl-folio .tpl-header {
+  border-left: 5px solid #0f766e;
+  padding: 0.55rem 0.75rem 0.55rem 1rem;
+  margin-bottom: 1rem;
+  background: linear-gradient(90deg, rgba(15,118,110,0.07), transparent);
+}
+.tpl-folio .header-label {
+  font-size: 8pt; font-weight: 700; letter-spacing: 0.12em;
+  text-transform: uppercase; color: #0f766e; font-family: Georgia, 'Times New Roman', serif;
+}
+.tpl-folio .tpl-section-heading {
+  font-size: 7pt; font-weight: 800; letter-spacing: 0.1em;
+  text-transform: uppercase; color: #0f766e;
+  border-bottom: 1px solid rgba(15,118,110,0.28); padding-bottom: 0.2rem; margin-bottom: 0.4rem;
+}
+
+/* ═══════════ NOVA (night aurora) ═════════════════════════════════ */
+.tpl-nova .content { padding: 0in 0.8in 0.6in 0.8in; }
+.tpl-nova .tpl-header {
+  background: linear-gradient(90deg, #0b1120 0%, #1e293b 100%);
+  color: #fff;
+  padding: 0.65rem 1rem;
+  margin-bottom: 1rem;
+  border-bottom: 3px solid #22d3ee;
+}
+.tpl-nova .header-label {
+  font-size: 9pt; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #22d3ee; font-family: Georgia, serif;
+}
+.tpl-nova .tpl-section-heading {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #0891b2;
+  border-left: 3px solid #22d3ee; padding-left: 0.45rem; margin-bottom: 0.45rem;
+}
+.tpl-nova .body-text, .tpl-nova .exp-wrap {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+/* ═══════════ SIGNAL (tech mono) ══════════════════════════════════ */
+.tpl-signal .content { padding: 0in 1in 0.65in 1in; }
+.tpl-signal .tpl-header {
+  border-bottom: 2px solid #0f172a;
+  padding-bottom: 0.4rem;
+  margin-bottom: 1rem;
+}
+.tpl-signal .header-label {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 7.5pt; font-weight: 700; letter-spacing: 0.22em;
+  text-transform: uppercase; color: #0f172a;
+}
+.tpl-signal .tpl-section-heading {
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 7pt; font-weight: 700; letter-spacing: 0.14em;
+  text-transform: uppercase; color: #0f172a;
+  margin-bottom: 0.4rem;
+}
+
+/* ═══════════ ATLAS (international serif) ═════════════════════════ */
+.tpl-atlas .content { padding: 0.85in 1.05in 0.85in 1.05in; }
+.tpl-atlas .tpl-header {
+  text-align: center;
+  border-bottom: 1px solid #1e3a5f;
+  padding-bottom: 0.45rem;
+  margin-bottom: 1.15rem;
+}
+.tpl-atlas .header-label {
+  font-size: 7pt; font-weight: 600; letter-spacing: 0.22em;
+  text-transform: uppercase; color: #1e3a5f; font-family: Cambria, Georgia, serif;
+}
+.tpl-atlas .tpl-section-heading {
+  font-size: 7.5pt; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: #1e3a5f;
+  border-bottom: 1px solid rgba(30,58,95,0.22); padding-bottom: 0.2rem; margin-bottom: 0.45rem;
+}
+.tpl-atlas .body-text, .tpl-atlas .exp-wrap {
+  font-family: Cambria, Georgia, serif;
+  font-size: 10.5pt;
+}
+
 .profile-photo-wrap { text-align: right; margin-bottom: 0.5rem; }
 .profile-photo-img {
   width: 1.1in; height: 1.1in; object-fit: cover;
@@ -272,6 +353,24 @@ body {
   background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(37,99,235,0.08));
   color: #6d28d9;
 }
+.tpl-folio .skill-pill {
+  border-radius: 0.2rem;
+  background-color: rgba(15,118,110,0.1); color: #0f766e;
+}
+.tpl-nova .skill-pill {
+  border-radius: 0.15rem;
+  background-color: rgba(8,145,178,0.09); color: #0e7490;
+}
+.tpl-signal .skill-pill {
+  border-radius: 0.12rem;
+  font-family: Consolas, monospace;
+  font-size: 7pt;
+  background-color: rgba(15,23,42,0.06); color: #0f172a;
+}
+.tpl-atlas .skill-pill {
+  border-radius: 9999px;
+  background-color: rgba(30,58,95,0.08); color: #1e3a5f;
+}
 
 /* ═══════════ EDUCATION ════════════════════════════════════════════ */
 .edu-entries { display: flex; flex-direction: column; }
@@ -290,6 +389,10 @@ body {
 .tpl-modern .cert-icon { color: #336b87; }
 .tpl-modern .cert-entry { font-size: 8.5pt; }
 .tpl-creative .cert-icon { color: #6d28d9; }
+.tpl-folio .cert-icon { color: #0f766e; }
+.tpl-nova .cert-icon { color: #0891b2; }
+.tpl-signal .cert-icon { color: #0f172a; }
+.tpl-atlas .cert-icon { color: #1e3a5f; }
 
 /* ═══════════ COVER LETTER ═════════════════════════════════════════ */
 .cl-paragraph { margin-bottom: 0.7rem; line-height: 1.65; font-size: 10.5pt; }
@@ -530,29 +633,84 @@ def _single_col_resume_html(
             '<div class="header-label">Tailored Resume</div>'
             "</div>"
         )
+    elif tpl == "folio":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Editorial Résumé</div>'
+            "</div>"
+        )
+    elif tpl == "nova":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Professional Profile</div>'
+            "</div>"
+        )
+    elif tpl == "signal":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Resume // SIGNAL</div>'
+            "</div>"
+        )
+    elif tpl == "atlas":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Curriculum Vitae</div>'
+            "</div>"
+        )
+
+    def _summary_label() -> str:
+        if tpl == "executive":
+            return "Executive Summary"
+        if tpl == "creative":
+            return "About Me"
+        if tpl == "folio":
+            return "Professional Narrative"
+        if tpl == "nova":
+            return "Positioning Summary"
+        if tpl == "signal":
+            return "Profile"
+        if tpl == "atlas":
+            return "Summary"
+        return "Professional Summary"
+
+    def _skills_label() -> str:
+        if tpl == "executive":
+            return "Core Competencies"
+        if tpl == "creative":
+            return "Skills & Tools"
+        if tpl == "folio":
+            return "Expertise"
+        if tpl == "nova":
+            return "Core Strengths"
+        if tpl == "signal":
+            return "Stack"
+        return "Skills"
+
+    def _certs_label() -> str:
+        if tpl == "executive":
+            return "Certifications & Credentials"
+        if tpl in ("folio", "nova"):
+            return "Credentials"
+        return "Certifications"
 
     parts: list[str] = []
     if content.get("summary"):
-        label = "Executive Summary" if tpl == "executive" else (
-            "About Me" if tpl == "creative" else "Professional Summary"
-        )
         parts.append(
-            _section(label, f'<div class="body-text">{_nl2br(content["summary"])}</div>')
+            _section(
+                _summary_label(),
+                f'<div class="body-text">{_nl2br(content["summary"])}</div>',
+            )
         )
     exps = content.get("experiences", [])
     if exps:
         parts.append(_experiences_html(exps))
     if content.get("skills"):
-        label = "Core Competencies" if tpl == "executive" else (
-            "Skills & Tools" if tpl == "creative" else "Skills"
-        )
-        parts.append(_section(label, _skills_html(content["skills"])))
+        parts.append(_section(_skills_label(), _skills_html(content["skills"])))
     if content.get("education"):
         parts.append(_section("Education", _education_html(content["education"])))
     if content.get("certifications"):
-        label = "Certifications & Credentials" if tpl == "executive" else "Certifications"
         parts.append(
-            _section(label, _certifications_html(content["certifications"]))
+            _section(_certs_label(), _certifications_html(content["certifications"]))
         )
 
     sections = '<div class="sections">' + "".join(parts) + "</div>"
@@ -575,6 +733,30 @@ def _cover_letter_html(text: str, style: str) -> str:
             "</div>"
         )
     elif tpl == "creative":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Cover Letter</div>'
+            "</div>"
+        )
+    elif tpl == "folio":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Cover Letter</div>'
+            "</div>"
+        )
+    elif tpl == "nova":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">Cover Letter</div>'
+            "</div>"
+        )
+    elif tpl == "signal":
+        header = (
+            '<div class="tpl-header">'
+            '<div class="header-label">// COVER LETTER</div>'
+            "</div>"
+        )
+    elif tpl == "atlas":
         header = (
             '<div class="tpl-header">'
             '<div class="header-label">Cover Letter</div>'

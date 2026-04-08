@@ -12,13 +12,13 @@ import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
 import type { ResumeContactInfo, TailorPreviewResponse } from "../types/api";
+import type { TemplateStyle } from "../constants/templateStyles";
+import { getTemplatePreviewHeader, templateDisplayName } from "../constants/templateStyles";
 import ResumeIdentityPanel from "./ResumeIdentityPanel";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Types
    ═══════════════════════════════════════════════════════════════════════ */
-
-type TemplateStyle = "classic" | "modern" | "minimal" | "executive" | "creative";
 
 interface DraftReviewProps {
   draft: TailorPreviewResponse;
@@ -1205,13 +1205,7 @@ export default function DraftReview({
   );
   const isModern = templateStyle === "modern";
 
-  const templateLabel: Record<TemplateStyle, string> = {
-    classic: "Classic Professional",
-    modern: "Modern Two-Column",
-    minimal: "Minimalist ATS-Friendly",
-    executive: "Executive Brief",
-    creative: "Creative Portfolio",
-  };
+  const formatLabel = templateDisplayName(templateStyle);
 
   return (
     <div className="flex flex-1 flex-col min-h-0">
@@ -1244,7 +1238,7 @@ export default function DraftReview({
             {/* Template badge */}
             <div className="mb-3 flex items-center justify-center gap-2">
               <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-semibold text-secondary shadow-sm">
-                Format: {templateLabel[templateStyle]}
+                Format: {formatLabel}
               </span>
             </div>
 
@@ -1285,17 +1279,18 @@ export default function DraftReview({
                       </div>
                     ) : null}
                   </div>
-                  {(templateStyle === "executive" || templateStyle === "creative") && (
+                  {getTemplatePreviewHeader(templateStyle) && (
                     <div className="tpl-header">
-                      <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">
-                        Tailored Resume
-                      </div>
-                    </div>
-                  )}
-                  {templateStyle === "classic" && (
-                    <div className="tpl-header">
-                      <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
-                        Tailored Resume
+                      <div
+                        className={
+                          templateStyle === "executive" ||
+                          templateStyle === "creative" ||
+                          templateStyle === "nova"
+                            ? "text-[10px] font-medium uppercase tracking-widest text-white/90"
+                            : "text-[10px] font-medium uppercase tracking-widest text-secondary/75"
+                        }
+                      >
+                        {getTemplatePreviewHeader(templateStyle)}
                       </div>
                     </div>
                   )}
