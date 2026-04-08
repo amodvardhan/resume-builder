@@ -10,17 +10,20 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = _PROJECT_ROOT / ".env"
+_SETTINGS_SOURCES: dict = {
+    "env_prefix": "APP_",
+    "env_file_encoding": "utf-8",
+    "extra": "ignore",
+}
+if _ENV_FILE.is_file():
+    _SETTINGS_SOURCES["env_file"] = str(_ENV_FILE)
 
 
 class Settings(BaseSettings):
-    """Loaded from ``.env`` and/or OS environment (``APP_*``)."""
+    """Loaded from ``.env`` (if present) and/or OS environment (``APP_*``)."""
 
-    model_config = SettingsConfigDict(
-        env_prefix="APP_",
-        env_file=str(_PROJECT_ROOT / ".env"),
-        env_file_encoding="utf-8",
-        extra="ignore",
-    )
+    model_config = SettingsConfigDict(**_SETTINGS_SOURCES)
 
     # --- Required (no defaults — must be set in .env or deployment env) ---
     database_url: str = Field(

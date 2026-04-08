@@ -434,6 +434,13 @@ async def _reparse_resumes_background() -> None:
 
 app = FastAPI(title="Resume Builder", version="3.0.0")
 
+
+@app.get("/health")
+async def health() -> dict[str, str]:
+    """Liveness probe for containers and load balancers (no database dependency)."""
+    return {"status": "ok"}
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -464,18 +471,22 @@ app.include_router(files.router)
 
 @app.on_event("startup")
 async def _startup() -> None:
+    # Crawl/legacy job renames first (no-op on empty DB). Must run before create_all when
+    # upgrading old installs that still have crawled_jobs / crawl_runs.
     await _migrate_job_tables()
     await _migrate_job_sync_runs_sources_column()
     await _migrate_job_listing_application_metadata()
     await _migrate_job_preferences_target_countries()
-    await _migrate_users_profile_photo_path()
-    await _migrate_users_contact_fields()
-    await _migrate_applications_export_snapshot()
 
+    # Create tables from ORM on fresh databases before ALTER-based migrations below.
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
     async with engine.begin() as conn:
         await conn.execute(lt)
         await conn.run_sync(Base.metadata.create_all)
+
+    await _migrate_users_profile_photo_path()
+    await _migrate_users_contact_fields()
+    await _migrate_applications_export_snapshot()
 
     for attempt in range(_MIGRATION_RETRIES):
         try:

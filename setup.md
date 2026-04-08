@@ -58,9 +58,23 @@ The **authoritative list** of variables is **`.env.example`**. Sync order in cod
 
 ## 6) Run the API
 
+### Local Python (development)
+
 ```bash
 uvicorn src.backend.main:app --reload --host 127.0.0.1 --port 8000
 ```
+
+### Docker Compose (API + PostgreSQL in Docker)
+
+Ensure `.env` exists (from `.env.example`). **`APP_DATABASE_URL` must use hostname `postgres`** (the Compose service name) and the same user, password, and database name as **`POSTGRES_USER`**, **`POSTGRES_PASSWORD`**, and **`POSTGRES_DB`**. Postgres is exposed on the host at **`POSTGRES_HOST_PORT`** (default `5432`) so you can use TablePlus or `psql` against `localhost` while the stack runs.
+
+```bash
+docker compose up --build -d
+```
+
+The API listens on host port `HOST_API_PORT` (default `8000`). Stop with `docker compose down`. Data persists in named volumes (`postgres_data`, `api_storage`).
+
+To build only the API image: `docker build -t meridian-api .`
 
 If startup stalls or logs **“Migration blocked”** another client holds locks on Postgres. Close TablePlus/pgAdmin tabs on this DB, stop duplicate API processes, or run as DB superuser:
 

@@ -1,0 +1,37 @@
+# Git & IDE
+.git
+.gitignore
+.cursor
+.vscode
+.idea
+
+# Python
+.venv
+__pycache__
+*.py[cod]
+*.egg-info
+.eggs
+dist
+build
+
+# Secrets (never bake credentials into images)
+.env
+.env.*
+!.env.example
+
+# Frontend — not required for the API image
+src/frontend
+node_modules
+
+# Local uploads / generated files (created at runtime with correct ownership)
+storage
+
+# Docs & planning (not needed at runtime)
+.context
+.skills
+*.md
+
+# Misc
+.DS_Store
+*.swp
+Thumbs.db

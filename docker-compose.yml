@@ -1,0 +1,47 @@
+# Meridian backend + PostgreSQL (both in Docker). Copy .env.example → .env and set secrets.
+# Start: docker compose up --build -d
+# Logs:  docker compose logs -f api
+#
+# APP_DATABASE_URL must use hostname `postgres` (the service name) and match POSTGRES_* below.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-resume_builder}
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${HOST_API_PORT:-8000}:8000"
+    volumes:
+      - api_storage:/app/storage
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  api_storage:
