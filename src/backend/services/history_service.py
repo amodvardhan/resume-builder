@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from src.backend.models import Application, Resume, Template, User
 from src.backend.services.profile_photo import resolved_photo_path
 from src.backend.services.resume_parser import html_to_plain_text
-from src.backend.services.tailor_engine import tailor_resume
+from src.backend.services.tailor_engine import resume_contact_from_user, tailor_resume
 
 logger = logging.getLogger(__name__)
 
@@ -91,6 +91,7 @@ async def clone_application(
         template_path=template_path,
         history_context=history_context,
         profile_photo_path=photo_path,
+        resume_contact=resume_contact_from_user(user),
     )
 
     new_app = Application(
@@ -103,7 +104,11 @@ async def clone_application(
         job_description_html=new_job_description_html,
         cover_letter_sentiment=source.cover_letter_sentiment,
         tailored_resume_url=result["tailored_resume_url"],
+        cover_letter_url=result.get("cover_letter_url") or None,
+        resume_pdf_url=result.get("resume_pdf_url") or None,
+        cover_letter_pdf_url=result.get("cover_letter_pdf_url") or None,
         cover_letter_text=result["cover_letter_text"],
+        export_snapshot=result.get("export_snapshot"),
         reference_application_id=source_application_id,
     )
     session.add(new_app)

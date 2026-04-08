@@ -18,20 +18,20 @@ interface HeaderProps {
 
 const NAV_ITEMS: { id: PageView; label: string; icon: ReactNode }[] = [
   {
-    id: "compose",
-    label: "New Application",
-    icon: (
-      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-      </svg>
-    ),
-  },
-  {
     id: "dashboard",
     label: "Matches",
     icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
         <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 3v11.25A2.25 2.25 0 006 16.5h2.25M3.75 3h-1.5m1.5 0h16.5m0 0h1.5m-1.5 0v11.25A2.25 2.25 0 0118 16.5h-2.25m-7.5 0h7.5m-7.5 0l-1 3m8.5-3l1 3m0 0l.5 1.5m-.5-1.5h-9.5m0 0l-.5 1.5M9 11.25v1.5M12 9v3.75m3-6v6" />
+      </svg>
+    ),
+  },
+  {
+    id: "compose",
+    label: "New Application",
+    icon: (
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
       </svg>
     ),
   },
@@ -81,97 +81,98 @@ export default function Header({
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b transition-all duration-200 ${
+      className={`sticky top-0 z-50 border-b transition-all duration-300 ${
         scrolled
-          ? "border-border-muted bg-surface/80 backdrop-blur-xl shadow-sm"
-          : "border-transparent bg-surface/60 backdrop-blur-lg"
+          ? "border-border-muted/70 bg-surface/75 shadow-[0_8px_32px_-12px_rgba(15,23,42,0.12)] backdrop-blur-xl"
+          : "border-transparent bg-surface/45 backdrop-blur-xl"
       }`}
     >
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6 lg:px-8">
-        {/* Brand */}
+      <div className="mx-auto flex h-[3.65rem] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        {/* Brand — home is the command center (Matches) */}
         <button
-          onClick={() => onNavigate("compose")}
-          className="flex items-center gap-2.5 transition-opacity hover:opacity-80"
+          type="button"
+          onClick={() => onNavigate("dashboard")}
+          className="group flex min-w-0 items-center gap-2.5 rounded-xl py-1.5 text-left transition-opacity hover:opacity-90"
         >
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-linear-to-br from-brand to-indigo-600 shadow-sm">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4.5 w-4.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-linear-to-br from-brand to-indigo-600 shadow-md shadow-brand/20 ring-1 ring-white/25">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-[1.15rem] w-[1.15rem] text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
             </svg>
           </div>
-          <span className="text-lg font-semibold tracking-tight text-primary">
+          <span className="truncate text-[15px] font-semibold tracking-tight text-primary">
             Meridian
           </span>
         </button>
 
-        {/* Navigation */}
-        <nav className="hidden sm:flex items-center gap-1">
-          {NAV_ITEMS.map((item) => {
-            const isActive = currentPage === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`
-                  relative flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-sm font-medium
-                  transition-all duration-200
-                  ${isActive
-                    ? "text-brand"
-                    : "text-secondary hover:bg-muted hover:text-primary"
-                  }
-                `}
-              >
-                {item.icon}
-                {item.label}
-                <span
-                  className={`absolute bottom-0 left-1/2 -translate-x-1/2 h-0.5 rounded-full bg-brand transition-all duration-300 ${
-                    isActive ? "w-3/4 opacity-100" : "w-0 opacity-0"
-                  }`}
-                />
-              </button>
-            );
-          })}
+        {/* Navigation — segmented control (desktop) */}
+        <nav
+          className="hidden min-w-0 flex-1 justify-center sm:flex"
+          aria-label="Main"
+        >
+          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted/60 bg-muted/50 p-1 shadow-inner shadow-black/3">
+            {NAV_ITEMS.map((item) => {
+              const isActive = currentPage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onNavigate(item.id)}
+                  className={`
+                    flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium
+                    transition-all duration-200
+                    ${isActive
+                      ? "bg-surface text-primary shadow-sm ring-1 ring-black/6"
+                      : "text-secondary hover:bg-surface/70 hover:text-primary"
+                    }
+                  `}
+                >
+                  <span className={isActive ? "text-brand" : "text-secondary"}>{item.icon}</span>
+                  <span className="hidden lg:inline">{item.label}</span>
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         {/* Mobile navigation */}
-        <nav className="flex sm:hidden items-center gap-0.5">
-          {NAV_ITEMS.map((item) => {
-            const isActive = currentPage === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => onNavigate(item.id)}
-                className={`
-                  relative flex items-center justify-center rounded-lg p-2.5 text-sm
-                  transition-all duration-200
-                  ${isActive
-                    ? "text-brand"
-                    : "text-secondary hover:bg-muted hover:text-primary"
-                  }
-                `}
-                title={item.label}
-              >
-                {item.icon}
-                <span
-                  className={`absolute bottom-0.5 left-1/2 -translate-x-1/2 h-0.5 rounded-full bg-brand transition-all duration-300 ${
-                    isActive ? "w-3/5 opacity-100" : "w-0 opacity-0"
-                  }`}
-                />
-              </button>
-            );
-          })}
+        <nav className="flex min-w-0 flex-1 justify-end sm:hidden" aria-label="Main">
+          <div className="flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted/60 bg-muted/50 p-1">
+            {NAV_ITEMS.map((item) => {
+              const isActive = currentPage === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => onNavigate(item.id)}
+                  className={`
+                    flex shrink-0 items-center justify-center rounded-full p-2.5
+                    transition-all duration-200
+                    ${isActive
+                      ? "bg-surface text-brand shadow-sm ring-1 ring-black/6"
+                      : "text-secondary hover:bg-surface/80 hover:text-primary"
+                    }
+                  `}
+                  title={item.label}
+                >
+                  {item.icon}
+                </button>
+              );
+            })}
+          </div>
         </nav>
 
         {/* User area */}
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
           {isLoading ? (
-            <div className="h-8 w-8 animate-pulse rounded-full bg-skeleton" />
+            <div className="h-9 w-9 animate-pulse rounded-full bg-skeleton ring-2 ring-surface" />
           ) : user ? (
             <>
               <button
+                type="button"
                 onClick={() => onNavigate("profile")}
-                className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted"
+                className="flex max-w-44 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-muted/90"
               >
-                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-brand to-indigo-600 text-[11px] font-semibold text-white shadow-sm ring-2 ring-surface">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-slate-700 to-slate-900 text-[11px] font-semibold text-white shadow-md ring-2 ring-white/90">
                   {user.full_name
                     .split(" ")
                     .map((n) => n[0])
@@ -179,14 +180,15 @@ export default function Header({
                     .slice(0, 2)
                     .toUpperCase()}
                 </div>
-                <span className="hidden md:block text-sm font-medium text-primary">
+                <span className="hidden min-w-0 truncate text-[13px] font-medium text-primary md:block">
                   {user.full_name}
                 </span>
               </button>
               <button
+                type="button"
                 onClick={logout}
                 title="Sign out"
-                className="rounded-lg p-2 text-secondary transition-colors hover:bg-muted hover:text-primary"
+                className="rounded-full p-2.5 text-secondary transition-colors hover:bg-muted hover:text-primary"
               >
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15m3 0l3-3m0 0l-3-3m3 3H9" />

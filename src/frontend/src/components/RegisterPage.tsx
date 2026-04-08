@@ -8,9 +8,6 @@ interface RegisterPageProps {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const INPUT_CLASS =
-  "mt-1.5 w-full rounded-xl border border-border-muted bg-surface px-4 py-3 text-sm text-primary placeholder:text-secondary/40 transition-all duration-200 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10 focus:shadow-[inset_0_1px_4px_rgba(0,0,0,0.04)]";
-
 export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
   const auth = useAuth();
 
@@ -83,11 +80,11 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         {/* Brand */}
         <div className="mb-8 flex flex-col items-center animate-fade-in-up">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br from-brand to-indigo-600 shadow-lg shadow-brand/20">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-brand to-indigo-600 shadow-lg shadow-brand/25 ring-1 ring-white/20">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 text-white"
@@ -103,16 +100,16 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
               />
             </svg>
           </div>
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-primary">
+          <h1 className="mt-5 text-[1.65rem] font-semibold tracking-tight text-primary">
             Create your account
           </h1>
-          <p className="mt-1 text-sm text-secondary">
+          <p className="mt-1.5 text-sm text-secondary">
             Get started with Meridian
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm animate-scale-in">
+        <div className="meridian-card-solid animate-scale-in overflow-hidden">
           <form onSubmit={handleSubmit} className="space-y-5 p-6 sm:p-8">
             {/* Server error */}
             {error && (
@@ -123,10 +120,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
 
             {/* Full Name */}
             <div className="animate-fade-in-up stagger-1">
-              <label
-                htmlFor="reg-name"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="reg-name" className="ui-label">
                 Full name
               </label>
               <input
@@ -137,7 +131,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Jane Doe"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
               {fieldErrors.fullName && (
                 <p className="mt-1 text-xs text-danger">{fieldErrors.fullName}</p>
@@ -146,10 +140,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
 
             {/* Email */}
             <div className="animate-fade-in-up stagger-2">
-              <label
-                htmlFor="reg-email"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="reg-email" className="ui-label">
                 Email address
               </label>
               <input
@@ -160,7 +151,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
               {fieldErrors.email && (
                 <p className="mt-1 text-xs text-danger">{fieldErrors.email}</p>
@@ -169,10 +160,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
 
             {/* Password */}
             <div className="animate-fade-in-up stagger-3">
-              <label
-                htmlFor="reg-password"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="reg-password" className="ui-label">
                 Password
               </label>
               <input
@@ -183,7 +171,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 8 characters"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
               {password && (
                 <div className="mt-2.5 space-y-1.5">
@@ -209,10 +197,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
 
             {/* Confirm Password */}
             <div className="animate-fade-in-up stagger-4">
-              <label
-                htmlFor="reg-confirm"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="reg-confirm" className="ui-label">
                 Confirm password
               </label>
               <input
@@ -223,7 +208,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Re-enter your password"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
               {fieldErrors.confirmPassword && (
                 <p className="mt-1 text-xs text-danger">
@@ -237,7 +222,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-brand to-indigo-600 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+                className="ui-btn-primary w-full py-3.5 text-[15px]"
               >
                 {isSubmitting ? (
                   <>
@@ -252,7 +237,7 @@ export default function RegisterPage({ onSwitchToLogin }: RegisterPageProps) {
           </form>
 
           {/* Footer link */}
-          <div className="rounded-b-2xl bg-muted/50 px-6 py-5 text-center sm:px-8">
+          <div className="border-t border-border-muted/60 bg-surface-raised/90 px-6 py-5 text-center sm:px-8">
             <p className="text-sm text-secondary">
               Already have an account?{" "}
               <button

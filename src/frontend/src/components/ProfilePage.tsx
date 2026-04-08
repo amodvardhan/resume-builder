@@ -20,6 +20,9 @@ interface ProfilePageProps {
     full_name?: string;
     email?: string;
     core_skills?: string[];
+    phone?: string | null;
+    country?: string | null;
+    linkedin_url?: string | null;
   }) => Promise<void>;
   isSaving: boolean;
   error: unknown;
@@ -34,6 +37,9 @@ export default function ProfilePage({
 }: ProfilePageProps) {
   const [fullName, setFullName] = useState(profile.full_name);
   const [email, setEmail] = useState(profile.email);
+  const [phone, setPhone] = useState(profile.phone ?? "");
+  const [country, setCountry] = useState(profile.country ?? "");
+  const [linkedinUrl, setLinkedinUrl] = useState(profile.linkedin_url ?? "");
   const [skillsText, setSkillsText] = useState(profile.core_skills.join(", "));
   const [saved, setSaved] = useState(false);
 
@@ -79,6 +85,9 @@ export default function ProfilePage({
   useEffect(() => {
     setFullName(profile.full_name);
     setEmail(profile.email);
+    setPhone(profile.phone ?? "");
+    setCountry(profile.country ?? "");
+    setLinkedinUrl(profile.linkedin_url ?? "");
     setSkillsText(profile.core_skills.join(", "));
   }, [profile]);
 
@@ -88,10 +97,17 @@ export default function ProfilePage({
       .map((s) => s.trim())
       .filter(Boolean);
 
-    await onSave({ full_name: fullName, email, core_skills: coreSkills });
+    await onSave({
+      full_name: fullName,
+      email,
+      core_skills: coreSkills,
+      phone: phone.trim() || null,
+      country: country.trim() || null,
+      linkedin_url: linkedinUrl.trim() || null,
+    });
     setSaved(true);
     setTimeout(() => setSaved(false), 2500);
-  }, [fullName, email, skillsText, onSave]);
+  }, [fullName, email, phone, country, linkedinUrl, skillsText, onSave]);
 
   const skills = skillsText
     .split(",")
@@ -99,44 +115,84 @@ export default function ProfilePage({
     .filter(Boolean);
 
   return (
-    <div className="page-enter mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="page-enter page-shell">
+      <div className="mx-auto w-full max-w-3xl">
       <div className="mb-8">
-        <h1 className="text-2xl font-semibold tracking-tight text-primary">
-          Your Profile
+        <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand">
+          Account
+        </p>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight text-primary">
+          Your profile
         </h1>
-        <p className="mt-1 text-sm text-secondary">
+        <p className="mt-1.5 max-w-xl text-sm leading-relaxed text-secondary">
           Manage your personal details and core skills used across all applications.
         </p>
       </div>
 
       <div className="space-y-6">
         {/* Profile card */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-          <div className="border-b border-border-light px-6 py-4 sm:px-8">
+        <div className="meridian-card-solid">
+          <div className="border-b border-border-muted/60 px-6 py-4 sm:px-8">
             <h2 className="text-sm font-semibold text-primary">Personal Information</h2>
           </div>
           <div className="space-y-5 p-6 sm:p-8">
             <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
               <div>
-                <label className="block text-xs font-medium text-secondary">
+                <label className="ui-label">
                   Full Name
                 </label>
                 <input
                   type="text"
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/50 transition-colors focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/20"
+                  className="ui-input mt-1.5"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-secondary">
+                <label className="ui-label">
                   Email Address
                 </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="mt-1.5 w-full rounded-lg border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/50 transition-colors focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/20"
+                  className="ui-input mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="ui-label">
+                  Phone
+                </label>
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  placeholder="+1 …"
+                  className="ui-input mt-1.5"
+                />
+              </div>
+              <div>
+                <label className="ui-label">
+                  Country / region
+                </label>
+                <input
+                  type="text"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  placeholder="e.g. Germany"
+                  className="ui-input mt-1.5"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="ui-label">
+                  LinkedIn profile URL
+                </label>
+                <input
+                  type="url"
+                  value={linkedinUrl}
+                  onChange={(e) => setLinkedinUrl(e.target.value)}
+                  placeholder="https://www.linkedin.com/in/…"
+                  className="ui-input mt-1.5"
                 />
               </div>
             </div>
@@ -144,8 +200,8 @@ export default function ProfilePage({
         </div>
 
         {/* Professional photo — embedded in tailored resume exports */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-          <div className="border-b border-border-light px-6 py-4 sm:px-8">
+        <div className="meridian-card-solid">
+          <div className="border-b border-border-muted/60 px-6 py-4 sm:px-8">
             <h2 className="text-sm font-semibold text-primary">Professional photo</h2>
             <p className="mt-0.5 text-xs text-secondary">
               Optional headshot for resume previews and included in PDF and Word downloads. JPEG or PNG, up to a few MB.
@@ -207,8 +263,8 @@ export default function ProfilePage({
         </div>
 
         {/* Resume */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-          <div className="border-b border-border-light px-6 py-4 sm:px-8">
+        <div className="meridian-card-solid">
+          <div className="border-b border-border-muted/60 px-6 py-4 sm:px-8">
             <h2 className="text-sm font-semibold text-primary">Resume</h2>
             <p className="mt-0.5 text-xs text-secondary">
               You can save up to {MAX_STORED_RESUMES} resumes; exactly one is active at
@@ -297,20 +353,24 @@ export default function ProfilePage({
         </div>
 
         {/* Skills card */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-          <div className="border-b border-border-light px-6 py-4 sm:px-8">
+        <div className="meridian-card-solid">
+          <div className="border-b border-border-muted/60 px-6 py-4 sm:px-8">
             <h2 className="text-sm font-semibold text-primary">Core Skills</h2>
             <p className="mt-0.5 text-xs text-secondary">
               These skills are used by the AI to tailor your resume content.
             </p>
           </div>
           <div className="p-6 sm:p-8">
+            <label htmlFor="profile-skills" className="sr-only">
+              Core skills list
+            </label>
             <textarea
+              id="profile-skills"
               value={skillsText}
               onChange={(e) => setSkillsText(e.target.value)}
               rows={3}
               placeholder="e.g. Project Management, Data Analysis, Python, Stakeholder Engagement"
-              className="w-full resize-y rounded-lg border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/50 transition-colors focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/20"
+              className="ui-textarea"
             />
 
             {skills.length > 0 && (
@@ -331,9 +391,10 @@ export default function ProfilePage({
         {/* Actions */}
         <div className="flex items-center gap-4">
           <button
+            type="button"
             onClick={handleSave}
             disabled={isSaving}
-            className="rounded-lg bg-brand px-6 py-2.5 text-sm font-medium text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
+            className="ui-btn-primary px-8 py-2.5"
           >
             {isSaving ? "Saving..." : "Save Changes"}
           </button>
@@ -351,6 +412,7 @@ export default function ProfilePage({
             </span>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

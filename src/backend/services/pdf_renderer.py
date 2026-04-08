@@ -126,11 +126,54 @@ body {
 .tpl-modern .tpl-sidebar {
   width: 30%;
   flex-shrink: 0;
-  background-color: #f0f4f8;
-  padding: 1.4rem 0.85rem 1.4rem 1rem;
-  border-right: 2px solid #336b87;
+  background: linear-gradient(180deg, #f4f7fb 0%, #eef3f8 100%);
+  padding: 1.5rem 1rem 1.5rem 1.1rem;
+  border-right: 1px solid rgba(51, 107, 135, 0.35);
   min-height: 11in;
 }
+.contact-sidebar-block {
+  text-align: center;
+  padding: 0 0.2rem 0.75rem 0.2rem;
+  margin-bottom: 0.5rem;
+  border-bottom: 1px solid rgba(51, 107, 135, 0.18);
+}
+.contact-sidebar-name {
+  font-size: 11pt;
+  font-weight: 700;
+  color: #336b87;
+  margin-bottom: 0.45rem;
+  line-height: 1.25;
+}
+.contact-sidebar-line {
+  font-size: 8pt;
+  line-height: 1.45;
+  color: #334155;
+  margin-bottom: 0.2rem;
+  word-break: break-word;
+}
+.contact-sidebar-line .csl {
+  display: block;
+  font-size: 6.5pt;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+  margin-bottom: 0.06rem;
+}
+.contact-sidebar-line a { color: #2563eb; text-decoration: none; }
+.resume-top-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+.resume-top-contact { flex: 1; min-width: 0; text-align: left; }
+.resume-top-photo { flex-shrink: 0; }
+.resume-top-contact .contact-sidebar-name { text-align: left; font-size: 13pt; }
+.resume-top-contact .contact-sidebar-line .csl { text-align: left; }
+.resume-top-contact .contact-sidebar-line { text-align: left; }
 .tpl-modern .tpl-main {
   width: 70%;
   padding: 1.4rem 1.4rem 1.4rem 1.15rem;
@@ -201,11 +244,11 @@ body {
 
 .profile-photo-wrap { text-align: right; margin-bottom: 0.5rem; }
 .profile-photo-img {
-  width: 1.15in; height: 1.15in; object-fit: cover;
-  border-radius: 4px;
-  border: 1px solid rgba(15, 23, 42, 0.12);
+  width: 1.1in; height: 1.1in; object-fit: cover;
+  border-radius: 50%;
+  border: 2px solid rgba(51, 107, 135, 0.25);
 }
-.tpl-modern .profile-photo-wrap { text-align: center; margin-bottom: 0.55rem; }
+.tpl-modern .profile-photo-wrap { text-align: center; margin-bottom: 0.65rem; }
 .tpl-minimal .profile-photo-img { border-color: rgba(0,0,0,0.15); }
 
 /* ═══════════ SKILL PILLS ══════════════════════════════════════════ */
@@ -315,6 +358,74 @@ def _profile_photo_html_fragment(photo_path: Path | None) -> str:
     )
 
 
+def _contact_identity_html(
+    resume_contact: dict[str, str] | None,
+    *,
+    align: str = "center",
+) -> str:
+    """Name, LinkedIn, country, phone, email — same order as DOCX."""
+    if not resume_contact:
+        return ""
+    rc = resume_contact
+    if not any(
+        rc.get(k)
+        for k in ("full_name", "email", "phone", "country", "linkedin_url")
+    ):
+        return ""
+    parts: list[str] = []
+    al = "text-align: center;" if align == "center" else "text-align: left;"
+    if rc.get("full_name"):
+        parts.append(
+            f'<div class="contact-sidebar-name" style="{al}">{_esc(rc["full_name"])}</div>'
+        )
+    for key, label in (
+        ("linkedin_url", "LinkedIn"),
+        ("country", "Country"),
+        ("phone", "Phone"),
+        ("email", "Email"),
+    ):
+        val = (rc.get(key) or "").strip()
+        if not val:
+            continue
+        if key == "linkedin_url" and val.lower().startswith("http"):
+            link = _esc(val)
+            parts.append(
+                '<div class="contact-sidebar-line" style="%s">'
+                '<span class="csl">%s</span>'
+                '<a href="%s">%s</a></div>'
+                % (al, _esc(label), link, link)
+            )
+        else:
+            parts.append(
+                '<div class="contact-sidebar-line" style="%s">'
+                '<span class="csl">%s</span>%s</div>'
+                % (al, _esc(label), _esc(val))
+            )
+    wrap_cls = "contact-sidebar-block"
+    return f'<div class="{wrap_cls}">{"".join(parts)}</div>'
+
+
+def _resume_top_row_html(
+    profile_photo_path: Path | None,
+    resume_contact: dict[str, str] | None,
+) -> str:
+    """Single-column templates: contact left, round photo right."""
+    photo = _profile_photo_html_fragment(profile_photo_path)
+    ident = _contact_identity_html(resume_contact, align="left")
+    if not photo and not ident:
+        return ""
+    if ident and not photo:
+        return f'<div class="resume-top-row"><div class="resume-top-contact">{ident}</div></div>'
+    if photo and not ident:
+        return f'<div class="resume-top-row"><div class="resume-top-photo">{photo}</div></div>'
+    return (
+        '<div class="resume-top-row">'
+        f'<div class="resume-top-contact">{ident}</div>'
+        f'<div class="resume-top-photo">{photo}</div>'
+        "</div>"
+    )
+
+
 # ---------------------------------------------------------------------------
 # Full-page HTML builders
 # ---------------------------------------------------------------------------
@@ -324,14 +435,17 @@ def _resume_html(
     content: dict[str, Any],
     style: str,
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> str:
     """Build full-page HTML for the resume, matching the UI preview exactly."""
     tpl = style or "classic"
 
     if tpl == "modern":
-        body = _modern_resume_html(content, profile_photo_path)
+        body = _modern_resume_html(content, profile_photo_path, resume_contact)
     else:
-        body = _single_col_resume_html(content, tpl, profile_photo_path)
+        body = _single_col_resume_html(
+            content, tpl, profile_photo_path, resume_contact
+        )
 
     return (
         "<!DOCTYPE html>"
@@ -346,9 +460,11 @@ def _resume_html(
 def _modern_resume_html(
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> str:
     sidebar_parts: list[str] = []
     photo_frag = _profile_photo_html_fragment(profile_photo_path)
+    ident_frag = _contact_identity_html(resume_contact, align="center")
     if content.get("skills"):
         sidebar_parts.append(_section("Skills", _skills_html(content["skills"])))
     if content.get("education"):
@@ -371,7 +487,11 @@ def _modern_resume_html(
         main_parts.append(_experiences_html(exps))
 
     sidebar_inner = (
-        '<div class="sections">' + photo_frag + "".join(sidebar_parts) + "</div>"
+        '<div class="sections">'
+        + photo_frag
+        + ident_frag
+        + "".join(sidebar_parts)
+        + "</div>"
     )
     main_inner = '<div class="sections">' + "".join(main_parts) + "</div>"
 
@@ -388,9 +508,10 @@ def _single_col_resume_html(
     content: dict[str, Any],
     tpl: str,
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> str:
     header = ""
-    photo_frag = _profile_photo_html_fragment(profile_photo_path)
+    top_row = _resume_top_row_html(profile_photo_path, resume_contact)
     if tpl == "executive":
         header = (
             '<div class="tpl-header">'
@@ -438,7 +559,7 @@ def _single_col_resume_html(
 
     return (
         f'<div class="doc-page tpl-{_esc(tpl)}">'
-        f'<div class="content">{photo_frag}{header}{sections}</div>'
+        f'<div class="content">{top_row}{header}{sections}</div>'
         "</div>"
     )
 
@@ -488,6 +609,7 @@ def build_resume_pdf(
     content: dict[str, Any],
     template_style: str | None = None,
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> str:
     """Render the resume to PDF via WeasyPrint. Returns the output filename."""
     from weasyprint import HTML
@@ -498,6 +620,7 @@ def build_resume_pdf(
         content,
         template_style or "classic",
         profile_photo_path=profile_photo_path,
+        resume_contact=resume_contact,
     )
     filename = f"{uuid.uuid4()}.pdf"
     path = settings.output_dir / filename

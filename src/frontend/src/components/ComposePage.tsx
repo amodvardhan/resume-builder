@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import ResumeDrop from "./ResumeDrop";
+import ResumeIdentityPanel from "./ResumeIdentityPanel";
 import RichEditor from "./RichEditor";
 import SentimentSlider from "./SentimentSlider";
 import DraftReview from "./DraftReview";
@@ -19,13 +20,14 @@ import {
 import { uploadResume } from "../api/client";
 import { MAX_STORED_RESUMES } from "../constants/resumeLimits";
 import { useReferenceEngine } from "../hooks/useHistory";
-import { extractErrorMessage, getFileDownloadUrl } from "../api/client";
-import type {
-  ComposeJobPrefill,
-  ResumeUploadResponse,
-  ResumeListItem,
-  TailorPreviewResponse,
-  TailorConfirmResponse,
+import { downloadGeneratedFile, extractErrorMessage } from "../api/client";
+import {
+  pickResumeContact,
+  type ComposeJobPrefill,
+  type ResumeUploadResponse,
+  type ResumeListItem,
+  type TailorPreviewResponse,
+  type TailorConfirmResponse,
 } from "../types/api";
 
 export type ComposePhase = "input" | "review" | "done";
@@ -105,6 +107,10 @@ export default function ComposePage({
   const profilePhotoSrc = useProfilePhotoObjectUrl(
     userId,
     userProfileQuery.data?.has_profile_photo,
+  );
+  const resumeContact = useMemo(
+    () => pickResumeContact(userProfileQuery.data),
+    [userProfileQuery.data],
   );
 
   const { mode, baselineContext } = refEngine;
@@ -282,9 +288,9 @@ export default function ComposePage({
           application_id: res.new_application_id,
           tailored_resume_url: res.tailored_resume_url,
           cover_letter_text: res.cover_letter_text,
-          cover_letter_url: "",
-          resume_pdf_url: "",
-          cover_letter_pdf_url: "",
+          cover_letter_url: res.cover_letter_url ?? "",
+          resume_pdf_url: res.resume_pdf_url ?? "",
+          cover_letter_pdf_url: res.cover_letter_pdf_url ?? "",
         });
         setComposePhase("done");
       });
@@ -319,6 +325,7 @@ export default function ComposePage({
           draft={draft}
           templateStyle={templateStyle as "classic" | "modern" | "minimal" | "executive" | "creative"}
           profilePhotoSrc={profilePhotoSrc}
+          resumeContact={resumeContact}
           onConfirm={handleConfirm}
           onBack={handleBackToEditor}
           onRegenerate={handleRegenerate}
@@ -331,13 +338,17 @@ export default function ComposePage({
 
       {/* ── Compose: INPUT (narrow centered layout) ───────────── */}
       {composePhase === "input" && (
-        <div className="page-enter mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="page-enter page-shell">
+          <div className="mx-auto w-full max-w-3xl">
           {/* Page title */}
           <div className="mb-8">
-            <h1 className="text-2xl font-semibold tracking-tight text-primary">
-              {isComposing ? "New Application from Baseline" : "Create New Application"}
+            <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-brand">
+              {isComposing ? "Baseline flow" : "Document studio"}
+            </p>
+            <h1 className="mt-2 text-balance text-2xl font-semibold tracking-tight text-primary sm:text-[1.65rem]">
+              {isComposing ? "New application from baseline" : "Create a new application"}
             </h1>
-            <p className="mt-1 text-sm text-secondary">
+            <p className="mt-2 max-w-2xl text-sm leading-relaxed text-secondary">
               {isComposing
                 ? "Provide new job details to generate a tailored application based on your previous one."
                 : "Upload your resume, paste the job description, and let AI analyse and tailor your application."}
@@ -372,8 +383,8 @@ export default function ComposePage({
           <div className="space-y-6">
             {/* Step 1: Documents */}
             {!isComposing && (
-              <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-                <div className="border-b border-border-light px-6 py-4">
+              <div className="meridian-card-solid">
+                <div className="border-b border-border-muted/60 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                       1
@@ -405,7 +416,7 @@ export default function ComposePage({
                           type="button"
                           onClick={handleChooseNewResume}
                           disabled={activateResumeMutation.isPending}
-                          className="rounded-lg bg-brand px-4 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-brand-dark disabled:opacity-40"
+                          className="ui-btn-primary px-4 py-2 text-xs"
                         >
                           Use new upload
                         </button>
@@ -413,7 +424,7 @@ export default function ComposePage({
                           type="button"
                           onClick={handleKeepPreviousResume}
                           disabled={activateResumeMutation.isPending}
-                          className="rounded-lg border border-border-muted bg-surface px-4 py-2 text-xs font-semibold text-primary shadow-sm transition-colors hover:border-brand/40 disabled:opacity-40"
+                          className="ui-btn-secondary px-4 py-2 text-xs"
                         >
                           {activateResumeMutation.isPending
                             ? "Updating…"
@@ -428,8 +439,8 @@ export default function ComposePage({
 
             {/* Step 2: Resume Template Style */}
             {!isComposing && (
-              <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-                <div className="border-b border-border-light px-6 py-4">
+              <div className="meridian-card-solid">
+                <div className="border-b border-border-muted/60 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                       2
@@ -450,8 +461,8 @@ export default function ComposePage({
             )}
 
             {/* Step 3: Job details */}
-            <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-              <div className="border-b border-border-light px-6 py-4">
+            <div className="meridian-card-solid">
+              <div className="border-b border-border-muted/60 px-6 py-4">
                 <div className="flex items-center gap-3">
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                     {isComposing ? "1" : "3"}
@@ -483,8 +494,8 @@ export default function ComposePage({
 
             {/* Step 4: Tone (only for fresh tailor) */}
             {!isComposing && (
-              <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
-                <div className="border-b border-border-light px-6 py-4">
+              <div className="meridian-card-solid">
+                <div className="border-b border-border-muted/60 px-6 py-4">
                   <div className="flex items-center gap-3">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-xs font-semibold text-white">
                       4
@@ -503,7 +514,7 @@ export default function ComposePage({
               <button
                 onClick={handleClone}
                 disabled={!canSubmitClone}
-                className="w-full rounded-xl bg-brand py-3.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
+                className="ui-btn-primary w-full py-3.5 text-[15px]"
               >
                 {isCloning ? (
                   <span className="flex items-center justify-center gap-2">
@@ -519,7 +530,7 @@ export default function ComposePage({
                 <button
                   onClick={handlePreview}
                   disabled={!canSubmitTailor}
-                  className="w-full rounded-xl bg-brand py-3.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md disabled:cursor-not-allowed disabled:opacity-40"
+                  className="ui-btn-primary w-full py-3.5 text-[15px]"
                 >
                   {isPreviewing ? (
                     <span className="flex items-center justify-center gap-2">
@@ -554,13 +565,15 @@ export default function ComposePage({
               </div>
             )}
           </div>
+          </div>
         </div>
       )}
 
       {/* ── Compose: DONE (wider layout for styled preview) ──── */}
       {composePhase === "done" && result && (
         <div className="page-enter flex-1 overflow-y-auto bg-[#eaecf0]">
-          <div className="mx-auto max-w-[860px] px-4 py-8 sm:px-8">
+          <div className="page-shell !pb-10">
+            <div className="mx-auto w-full max-w-[860px]">
             {/* Success banner + download buttons */}
             <div className="mb-6 rounded-2xl border border-success/30 bg-white shadow-sm">
               <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
@@ -577,48 +590,64 @@ export default function ComposePage({
                 </div>
                 <div className="flex items-center gap-2">
                   {result.resume_pdf_url && (
-                    <a
-                      href={getFileDownloadUrl(result.resume_pdf_url)}
-                      download
-                      className="inline-flex items-center gap-2 rounded-lg bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all hover:bg-brand-dark hover:shadow-md"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void downloadGeneratedFile(result.resume_pdf_url!).catch((e) => {
+                          window.alert(extractErrorMessage(e));
+                        });
+                      }}
+                      className="ui-btn-primary inline-flex cursor-pointer gap-2 px-4 py-2.5 text-xs"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                       </svg>
                       Resume PDF
-                    </a>
+                    </button>
                   )}
                   {result.tailored_resume_url && (
-                    <a
-                      href={getFileDownloadUrl(result.tailored_resume_url)}
-                      download
+                    <button
+                      type="button"
                       title="Download as Word document"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
+                      onClick={() => {
+                        void downloadGeneratedFile(result.tailored_resume_url!).catch((e) => {
+                          window.alert(extractErrorMessage(e));
+                        });
+                      }}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
                     >
                       .docx
-                    </a>
+                    </button>
                   )}
                   {result.cover_letter_pdf_url && (
-                    <a
-                      href={getFileDownloadUrl(result.cover_letter_pdf_url)}
-                      download
-                      className="inline-flex items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5 text-xs font-semibold text-brand shadow-sm transition-all hover:bg-brand/10 hover:shadow-md"
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void downloadGeneratedFile(result.cover_letter_pdf_url!).catch((e) => {
+                          window.alert(extractErrorMessage(e));
+                        });
+                      }}
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-brand/30 bg-brand/5 px-4 py-2.5 text-xs font-semibold text-brand shadow-sm transition-all hover:bg-brand/10 hover:shadow-md"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
                       </svg>
                       Cover Letter PDF
-                    </a>
+                    </button>
                   )}
                   {result.cover_letter_url && (
-                    <a
-                      href={getFileDownloadUrl(result.cover_letter_url)}
-                      download
+                    <button
+                      type="button"
                       title="Download as Word document"
-                      className="inline-flex items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
+                      onClick={() => {
+                        void downloadGeneratedFile(result.cover_letter_url!).catch((e) => {
+                          window.alert(extractErrorMessage(e));
+                        });
+                      }}
+                      className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border-muted bg-surface px-3 py-2.5 text-[10px] font-semibold text-secondary shadow-sm transition-all hover:border-brand/40 hover:text-brand"
                     >
                       .docx
-                    </a>
+                    </button>
                   )}
                 </div>
               </div>
@@ -637,10 +666,11 @@ export default function ComposePage({
                             <img
                               src={profilePhotoSrc}
                               alt=""
-                              className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                              className="h-[7.25rem] w-[7.25rem] rounded-full border-2 border-[rgba(51,107,135,0.25)] object-cover shadow-sm"
                             />
                           </div>
                         ) : null}
+                        <ResumeIdentityPanel contact={resumeContact} variant="modern" />
                         {draft.skills && (
                           <div>
                             <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider mb-2">Skills</h3>
@@ -700,15 +730,20 @@ export default function ComposePage({
                     </div>
                   ) : (
                     <div className="px-12 py-10 sm:px-16 sm:py-12">
-                      {profilePhotoSrc ? (
-                        <div className="mb-4 flex justify-end">
-                          <img
-                            src={profilePhotoSrc}
-                            alt=""
-                            className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
-                          />
+                      <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <ResumeIdentityPanel contact={resumeContact} variant="strip" />
                         </div>
-                      ) : null}
+                        {profilePhotoSrc ? (
+                          <div className="flex shrink-0 justify-end sm:pt-0">
+                            <img
+                              src={profilePhotoSrc}
+                              alt=""
+                              className="h-[7.25rem] w-[7.25rem] rounded-full border-2 border-border-muted object-cover shadow-sm"
+                            />
+                          </div>
+                        ) : null}
+                      </div>
                       {(templateStyle === "executive" || templateStyle === "creative" || templateStyle === "classic") && (
                         <div className="tpl-header">
                           <div className="text-[10px] font-medium uppercase tracking-widest text-secondary/60">
@@ -810,11 +845,12 @@ export default function ComposePage({
 
             <button
               onClick={handleNewApplication}
-              className="mt-6 w-full rounded-xl border border-border-muted bg-surface py-3.5 text-sm font-semibold text-primary shadow-sm transition-all hover:border-brand hover:text-brand"
+              className="ui-btn-secondary mt-6 w-full py-3.5 text-sm font-semibold"
             >
               Create Another Application
             </button>
             <div className="h-8" />
+            </div>
           </div>
         </div>
       )}
@@ -835,15 +871,13 @@ function Field({
 }) {
   return (
     <div>
-      <label className="block text-xs font-medium text-secondary">
-        {label}
-      </label>
+      <label className="ui-label">{label}</label>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1.5 w-full rounded-lg border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/50 transition-colors focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/20"
+        className="ui-input mt-1.5"
       />
     </div>
   );

@@ -14,14 +14,10 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
   if (!editor) return null;
 
   const btnClass = (active: boolean) =>
-    `rounded px-2 py-1 text-xs font-medium transition-colors duration-150 ${
-      active
-        ? "bg-brand/10 text-brand"
-        : "text-secondary hover:bg-gray-100 hover:text-primary"
-    }`;
+    `ui-toolbar-btn ${active ? "ui-toolbar-btn--active" : ""}`;
 
   return (
-    <div className="flex flex-wrap items-center gap-1 border-b border-border-muted px-3 py-2">
+    <div className="ui-toolbar">
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBold().run()}
@@ -38,7 +34,7 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       >
         <em>I</em>
       </button>
-      <div className="mx-1 h-4 w-px bg-border-muted" />
+      <div className="ui-toolbar-sep" aria-hidden />
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
@@ -55,7 +51,7 @@ function MenuBar({ editor }: { editor: ReturnType<typeof useEditor> }) {
       >
         H3
       </button>
-      <div className="mx-1 h-4 w-px bg-border-muted" />
+      <div className="ui-toolbar-sep" aria-hidden />
       <button
         type="button"
         onClick={() => editor.chain().focus().toggleBulletList().run()}
@@ -128,12 +124,12 @@ export default function RichEditor({ value, onChange, placeholder }: RichEditorP
 
   return (
     <div>
-      <label className="block text-xs font-medium text-secondary">
-        Job Description
+      <label className="ui-label">
+        Job description
       </label>
       <div
-        className={`mt-1.5 overflow-hidden rounded-xl border bg-surface transition-all duration-200 ${
-          isFocused ? "border-brand ring-1 ring-brand/20" : "border-border-muted"
+        className={`ui-rich-editor mt-1.5 overflow-hidden transition-all duration-200 ${
+          isFocused ? "ui-rich-editor--focused" : ""
         }`}
       >
         <div

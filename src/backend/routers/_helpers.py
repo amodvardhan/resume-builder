@@ -30,6 +30,9 @@ def user_response(user: User) -> UserResponse:
         core_skills=user.core_skills if isinstance(user.core_skills, list) else [],
         is_admin=bool(getattr(user, "is_admin", False)),
         has_profile_photo=has_photo,
+        phone=(str(getattr(user, "phone", None) or "").strip() or None),
+        country=(str(getattr(user, "country", None) or "").strip() or None),
+        linkedin_url=(str(getattr(user, "linkedin_url", None) or "").strip() or None),
     )
 
 

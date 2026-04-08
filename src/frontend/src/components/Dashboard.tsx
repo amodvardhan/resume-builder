@@ -398,15 +398,15 @@ export default function Dashboard({
       : jobsFoundCount;
 
   return (
-    <div className="mx-auto w-full max-w-6xl px-4 py-8 sm:px-6 lg:px-8">
+    <div className="page-enter page-shell">
       {/* Guided flow — what to do next */}
-      <section className="animate-fade-in-up mb-8 overflow-hidden rounded-2xl border border-border-light bg-linear-to-br from-surface via-surface to-brand-subtle/40 p-6 shadow-sm sm:p-8">
+      <section className="meridian-card-solid animate-fade-in-up mb-8 overflow-hidden bg-linear-to-br from-surface via-surface to-brand-subtle/35 p-6 sm:p-8">
         <div className="flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-brand">
+            <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-brand">
               Job discovery
             </p>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-primary sm:text-3xl">
+            <h1 className="mt-2 text-balance text-2xl font-bold tracking-tight text-primary sm:text-[1.65rem]">
               Search boards → save listings → AI match cards
             </h1>
             <p className="mt-2 max-w-xl text-sm leading-relaxed text-secondary">
@@ -500,7 +500,7 @@ export default function Dashboard({
             type="button"
             onClick={handleSearchJobs}
             disabled={!profileReady || isSyncing}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-brand px-6 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-brand-dark hover:shadow-md disabled:pointer-events-none disabled:opacity-45"
+            className="ui-btn-primary inline-flex shrink-0 gap-2 px-6 py-3 text-sm disabled:pointer-events-none disabled:opacity-45"
           >
             {isSyncing ? (
               <>
@@ -537,7 +537,7 @@ export default function Dashboard({
           value={stats.data?.total_matches}
           isLoading={stats.isLoading}
           accent="blue"
-          icon="📊"
+          glyph="matches"
           stagger="stagger-1"
         />
         <StatCard
@@ -551,7 +551,7 @@ export default function Dashboard({
                 ? "amber"
                 : "red"
           }
-          icon="🎯"
+          glyph="score"
           suffix="%"
           stagger="stagger-2"
         />
@@ -560,7 +560,7 @@ export default function Dashboard({
           value={stats.data?.new_today}
           isLoading={stats.isLoading}
           accent="green"
-          icon="✨"
+          glyph="spark"
           stagger="stagger-3"
         />
         <StatCard
@@ -568,13 +568,13 @@ export default function Dashboard({
           value={stats.data?.saved_count}
           isLoading={stats.isLoading}
           accent="amber"
-          icon="🔖"
+          glyph="saved"
           stagger="stagger-4"
         />
       </div>
 
       {/* Latest search (raw listings) vs AI match cards */}
-      <div className="animate-fade-in-up stagger-2 mb-6 flex flex-col gap-3 rounded-2xl border border-border-light bg-surface px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="meridian-card-solid animate-fade-in-up stagger-2 mb-6 flex flex-col gap-3 px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
         <p className="text-xs font-medium text-secondary">
           Choose what to review: every job from the last board search, or only
           AI-scored match cards.
@@ -651,7 +651,7 @@ export default function Dashboard({
               setMinScore(Number(e.target.value));
               setMatchPage(1);
             }}
-            className="rounded-lg border border-border-muted bg-surface px-3 py-1.5 text-xs font-medium text-primary transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10"
+            className="ui-select ui-select-sm w-auto min-w-[10rem] font-medium"
           >
             {SCORE_OPTIONS.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -775,7 +775,7 @@ export default function Dashboard({
             <button
               type="button"
               onClick={onNavigatePreferences}
-              className="inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-brand-dark hover:shadow-md"
+              className="ui-btn-primary inline-flex items-center gap-2 px-5 py-2.5 text-sm"
             >
               {profileReady ? "Adjust search profile" : "Open search setup"}
             </button>
@@ -784,7 +784,7 @@ export default function Dashboard({
                 type="button"
                 onClick={handleSearchJobs}
                 disabled={isSyncing}
-                className="inline-flex items-center gap-2 rounded-xl border border-border-muted bg-surface px-5 py-2.5 text-sm font-semibold text-primary shadow-sm transition-all duration-200 hover:border-brand/40 hover:text-brand disabled:opacity-50"
+                className="ui-btn-secondary inline-flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-50"
               >
                 {isSyncing ? "Searching…" : "Search job boards"}
               </button>
@@ -1011,12 +1011,48 @@ const ACCENT_CONFIG = {
   },
 } as const;
 
+function StatGlyph({
+  kind,
+  className,
+}: {
+  kind: "matches" | "score" | "spark" | "saved";
+  className?: string;
+}) {
+  const cn = className ?? "";
+  if (kind === "matches") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" className={cn} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v7.125C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+      </svg>
+    );
+  }
+  if (kind === "score") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" className={cn} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.875v4.875m3-6.75v6.75m3-10.125v10.125M5.25 20.25h13.5a2.25 2.25 0 002.25-2.25V5.25a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 5.25v12.75a2.25 2.25 0 002.25 2.25z" />
+      </svg>
+    );
+  }
+  if (kind === "spark") {
+    return (
+      <svg xmlns="http://www.w3.org/2000/svg" className={cn} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+        <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456zM16.894 20.567L16.5 21.75l-.394-1.183a2.25 2.25 0 00-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 001.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 001.423 1.423l1.183.394-1.183.394a2.25 2.25 0 00-1.423 1.423z" />
+      </svg>
+    );
+  }
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" className={cn} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <path strokeLinecap="round" strokeLinejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+    </svg>
+  );
+}
+
 function StatCard({
   label,
   value,
   isLoading,
   accent,
-  icon,
+  glyph,
   suffix = "",
   stagger,
 }: {
@@ -1024,7 +1060,7 @@ function StatCard({
   value: number | undefined;
   isLoading: boolean;
   accent: "blue" | "green" | "amber" | "red";
-  icon: string;
+  glyph: "matches" | "score" | "spark" | "saved";
   suffix?: string;
   stagger: string;
 }) {
@@ -1032,7 +1068,7 @@ function StatCard({
 
   return (
     <div
-      className={`animate-fade-in-up ${stagger} overflow-hidden rounded-2xl border border-border-light bg-linear-to-br ${a.gradient} p-5 shadow-sm ring-1 ${a.ring} transition-shadow duration-200 hover:shadow-md`}
+      className={`animate-fade-in-up ${stagger} overflow-hidden rounded-2xl border border-border-muted/50 bg-linear-to-br ${a.gradient} p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ${a.ring} transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md`}
     >
       {isLoading ? (
         <div className="space-y-3">
@@ -1041,13 +1077,15 @@ function StatCard({
         </div>
       ) : (
         <>
-          <div className="flex items-center justify-between">
-            <p className="text-xs font-medium tracking-wide text-secondary">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-secondary/90">
               {label}
             </p>
-            <span className="text-base">{icon}</span>
+            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/70 ${a.text} shadow-sm ring-1 ring-white/80`}>
+              <StatGlyph kind={glyph} className="h-4 w-4" />
+            </span>
           </div>
-          <p className={`mt-3 text-3xl font-extrabold tracking-tight ${a.text}`}>
+          <p className={`mt-3 text-3xl font-extrabold tracking-tight tabular-nums ${a.text}`}>
             {value ?? 0}
             {suffix && (
               <span className="ml-0.5 text-lg font-semibold opacity-60">

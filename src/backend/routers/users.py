@@ -65,6 +65,12 @@ async def update_user(
         user.email = payload.email
     if payload.core_skills is not None:
         user.core_skills = payload.core_skills
+    if payload.phone is not None:
+        user.phone = (payload.phone.strip() or None)
+    if payload.country is not None:
+        user.country = (payload.country.strip() or None)
+    if payload.linkedin_url is not None:
+        user.linkedin_url = (payload.linkedin_url.strip() or None)
     await session.commit()
     await session.refresh(user)
     return user_response(user)

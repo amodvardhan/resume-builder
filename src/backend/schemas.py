@@ -39,6 +39,9 @@ class UserResponse(BaseModel):
     core_skills: list[str]
     is_admin: bool = False
     has_profile_photo: bool = False
+    phone: str | None = None
+    country: str | None = None
+    linkedin_url: str | None = None
 
 
 class TokenResponse(BaseModel):
@@ -63,6 +66,9 @@ class UserUpdateRequest(BaseModel):
     full_name: str | None = None
     email: EmailStr | None = None
     core_skills: list[str] | None = None
+    phone: str | None = None
+    country: str | None = None
+    linkedin_url: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -118,9 +124,22 @@ class ApplicationResponse(BaseModel):
     job_description_html: str
     cover_letter_sentiment: str | None
     tailored_resume_url: str | None
+    cover_letter_url: str | None = None
+    resume_pdf_url: str | None = None
+    cover_letter_pdf_url: str | None = None
     cover_letter_text: str | None
     reference_application_id: uuid.UUID | None
     created_at: str
+    # True when PDF can be regenerated from stored snapshot (same inputs as tailor confirm)
+    export_snapshot_present: bool = False
+
+
+class ApplicationRegenerateResumePdfResponse(BaseModel):
+    resume_pdf_url: str
+
+
+class ApplicationRegenerateCoverPdfResponse(BaseModel):
+    cover_letter_pdf_url: str
 
 
 class TailorRequest(BaseModel):
@@ -217,6 +236,9 @@ class CloneResponse(BaseModel):
     new_application_id: uuid.UUID
     tailored_resume_url: str
     cover_letter_text: str
+    cover_letter_url: str = ""
+    resume_pdf_url: str = ""
+    cover_letter_pdf_url: str = ""
 
 
 # ---------------------------------------------------------------------------

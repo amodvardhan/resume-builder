@@ -41,6 +41,9 @@ class User(Base):
         String(1024),
         nullable=True,
     )
+    phone: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    country: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    linkedin_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
 
 
 class Template(Base):
@@ -120,7 +123,17 @@ class Application(Base):
     tailored_resume_url: Mapped[str | None] = mapped_column(
         String(1024), nullable=True
     )
+    cover_letter_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True
+    )
+    resume_pdf_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True
+    )
+    cover_letter_pdf_url: Mapped[str | None] = mapped_column(
+        String(1024), nullable=True
+    )
     cover_letter_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    export_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     reference_application_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid,
         ForeignKey("applications.id", ondelete="SET NULL"),

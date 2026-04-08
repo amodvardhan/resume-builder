@@ -6,9 +6,6 @@ interface LoginPageProps {
   onSwitchToRegister?: () => void;
 }
 
-const INPUT_CLASS =
-  "mt-1.5 w-full rounded-xl border border-border-muted bg-surface px-4 py-3 text-sm text-primary placeholder:text-secondary/40 transition-all duration-200 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10 focus:shadow-[inset_0_1px_4px_rgba(0,0,0,0.04)]";
-
 export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
   const auth = useAuth();
 
@@ -33,11 +30,11 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background px-4">
+    <div className="flex min-h-screen items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         {/* Brand */}
         <div className="mb-8 flex flex-col items-center animate-fade-in-up">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-linear-to-br from-brand to-indigo-600 shadow-lg shadow-brand/20">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-linear-to-br from-brand to-indigo-600 shadow-lg shadow-brand/25 ring-1 ring-white/20">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-6 w-6 text-white"
@@ -53,16 +50,16 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
               />
             </svg>
           </div>
-          <h1 className="mt-4 text-2xl font-semibold tracking-tight text-primary">
+          <h1 className="mt-5 text-[1.65rem] font-semibold tracking-tight text-primary">
             Welcome back
           </h1>
-          <p className="mt-1 text-sm text-secondary">
+          <p className="mt-1.5 text-sm text-secondary">
             Sign in to your Meridian account
           </p>
         </div>
 
         {/* Card */}
-        <div className="rounded-2xl border border-border-light bg-surface shadow-sm animate-scale-in">
+        <div className="meridian-card-solid animate-scale-in overflow-hidden">
           <form onSubmit={handleSubmit} className="space-y-5 p-6 sm:p-8">
             {/* Error */}
             {error && (
@@ -73,10 +70,7 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
 
             {/* Email */}
             <div className="animate-fade-in-up stagger-1">
-              <label
-                htmlFor="login-email"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="login-email" className="ui-label">
                 Email address
               </label>
               <input
@@ -87,16 +81,13 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
             </div>
 
             {/* Password */}
             <div className="animate-fade-in-up stagger-2">
-              <label
-                htmlFor="login-password"
-                className="block text-xs font-medium text-secondary"
-              >
+              <label htmlFor="login-password" className="ui-label">
                 Password
               </label>
               <input
@@ -107,32 +98,35 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className={INPUT_CLASS}
+                className="ui-input mt-1.5"
               />
             </div>
 
             {/* Remember me */}
             <div className="animate-fade-in-up stagger-3">
-              <label className="flex items-center gap-2.5 cursor-pointer group select-none">
+              <div className="flex items-center gap-3">
                 <button
                   type="button"
-                  role="checkbox"
+                  role="switch"
                   aria-checked={rememberMe}
+                  aria-label="Remember this device"
                   onClick={() => setRememberMe(!rememberMe)}
-                  className={`flex h-[18px] w-[18px] items-center justify-center rounded-[5px] border transition-all duration-200 ${
-                    rememberMe
-                      ? "border-brand bg-brand"
-                      : "border-border-muted group-hover:border-border-hover"
-                  }`}
+                  className="ui-switch"
+                />
+                <span
+                  className="cursor-pointer select-none text-sm text-secondary hover:text-primary"
+                  onClick={() => setRememberMe(!rememberMe)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      setRememberMe(!rememberMe);
+                    }
+                  }}
+                  role="presentation"
                 >
-                  {rememberMe && (
-                    <svg className="h-3 w-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                  )}
-                </button>
-                <span className="text-sm text-secondary">Remember me</span>
-              </label>
+                  Remember this device
+                </span>
+              </div>
             </div>
 
             {/* Submit */}
@@ -140,7 +134,7 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-linear-to-r from-brand to-indigo-600 py-3 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
+                className="ui-btn-primary w-full py-3.5 text-[15px]"
               >
                 {isSubmitting ? (
                   <>
@@ -155,7 +149,7 @@ export default function LoginPage({ onSwitchToRegister }: LoginPageProps) {
           </form>
 
           {/* Footer link */}
-          <div className="rounded-b-2xl bg-muted/50 px-6 py-5 text-center sm:px-8">
+          <div className="border-t border-border-muted/60 bg-surface-raised/90 px-6 py-5 text-center sm:px-8">
             <p className="text-sm text-secondary">
               Don&apos;t have an account?{" "}
               <button

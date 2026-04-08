@@ -135,6 +135,22 @@ async def _apply_schema_migrations() -> None:
             ))
             logger.info("Migrated: added is_admin to users (REQ-017)")
 
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        for col_name, ddl in (
+            ("cover_letter_url", "ALTER TABLE applications ADD COLUMN cover_letter_url VARCHAR(1024)"),
+            ("resume_pdf_url", "ALTER TABLE applications ADD COLUMN resume_pdf_url VARCHAR(1024)"),
+            ("cover_letter_pdf_url", "ALTER TABLE applications ADD COLUMN cover_letter_pdf_url VARCHAR(1024)"),
+        ):
+            ac = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'applications' "
+                f"AND column_name = '{col_name}'"
+            ))
+            if ac.scalar() is None:
+                await conn.execute(text(ddl))
+                logger.info("Migrated: applications.%s", col_name)
+
 
 async def _migrate_users_profile_photo_path() -> None:
     """Add profile_photo_path for resume headshots."""
@@ -151,6 +167,41 @@ async def _migrate_users_profile_photo_path() -> None:
                 "ALTER TABLE users ADD COLUMN profile_photo_path VARCHAR(1024)"
             ))
             logger.info("Migrated: users.profile_photo_path")
+
+
+async def _migrate_users_contact_fields() -> None:
+    """Add phone, country, linkedin_url for resume header / exports."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        for col_name, ddl in (
+            ("phone", "ALTER TABLE users ADD COLUMN phone VARCHAR(64)"),
+            ("country", "ALTER TABLE users ADD COLUMN country VARCHAR(128)"),
+            ("linkedin_url", "ALTER TABLE users ADD COLUMN linkedin_url VARCHAR(512)"),
+        ):
+            col = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'users' "
+                f"AND column_name = '{col_name}'"
+            ))
+            if col.scalar() is None:
+                await conn.execute(text(ddl))
+                logger.info("Migrated: users.%s", col_name)
+
+
+async def _migrate_applications_export_snapshot() -> None:
+    """JSON snapshot of tailored content + template_style for on-demand PDF regeneration."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'applications' "
+            "AND column_name = 'export_snapshot'"
+        ))
+        if col.scalar() is None:
+            await conn.execute(text("ALTER TABLE applications ADD COLUMN export_snapshot JSONB"))
+            logger.info("Migrated: applications.export_snapshot")
 
 
 async def _migrate_job_tables() -> None:
@@ -418,6 +469,8 @@ async def _startup() -> None:
     await _migrate_job_listing_application_metadata()
     await _migrate_job_preferences_target_countries()
     await _migrate_users_profile_photo_path()
+    await _migrate_users_contact_fields()
+    await _migrate_applications_export_snapshot()
 
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
     async with engine.begin() as conn:

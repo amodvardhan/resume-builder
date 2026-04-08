@@ -19,6 +19,37 @@ export interface UserProfile {
   is_admin?: boolean;
   /** True when a headshot is stored — used in resume preview and exports */
   has_profile_photo?: boolean;
+  phone?: string | null;
+  country?: string | null;
+  linkedin_url?: string | null;
+}
+
+/** Identity lines for resume sidebar / header (matches backend export order). */
+export interface ResumeContactInfo {
+  full_name?: string;
+  email?: string;
+  phone?: string;
+  country?: string;
+  linkedin_url?: string;
+}
+
+export function pickResumeContact(
+  p: UserProfile | null | undefined,
+): ResumeContactInfo | null {
+  if (!p) return null;
+  const full_name = (p.full_name || "").trim();
+  const email = (p.email || "").trim();
+  const phone = (p.phone || "").trim();
+  const country = (p.country || "").trim();
+  const linkedin_url = (p.linkedin_url || "").trim();
+  if (!full_name && !email && !phone && !country && !linkedin_url) return null;
+  return {
+    ...(full_name ? { full_name } : {}),
+    ...(email ? { email } : {}),
+    ...(phone ? { phone } : {}),
+    ...(country ? { country } : {}),
+    ...(linkedin_url ? { linkedin_url } : {}),
+  };
 }
 
 export interface UserCreatePayload {
@@ -31,6 +62,9 @@ export interface UserUpdatePayload {
   full_name?: string;
   email?: string;
   core_skills?: string[];
+  phone?: string | null;
+  country?: string | null;
+  linkedin_url?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +216,9 @@ export interface CloneResponse {
   new_application_id: string;
   tailored_resume_url: string;
   cover_letter_text: string;
+  cover_letter_url?: string;
+  resume_pdf_url?: string;
+  cover_letter_pdf_url?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -200,9 +237,23 @@ export interface Application {
   job_description_html: string;
   cover_letter_sentiment: string | null;
   tailored_resume_url: string | null;
+  /** Word cover letter filename in output store */
+  cover_letter_url?: string | null;
+  resume_pdf_url?: string | null;
+  cover_letter_pdf_url?: string | null;
   cover_letter_text: string | null;
   reference_application_id: string | null;
   created_at: string;
+  /** True when a draft snapshot exists so the API can rebuild PDFs (same as post-confirm). */
+  export_snapshot_present?: boolean;
+}
+
+export interface ApplicationRegenerateResumePdfResponse {
+  resume_pdf_url: string;
+}
+
+export interface ApplicationRegenerateCoverLetterPdfResponse {
+  cover_letter_pdf_url: string;
 }
 
 // ---------------------------------------------------------------------------

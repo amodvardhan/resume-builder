@@ -18,7 +18,8 @@ export default function SentimentSlider({ value, onChange }: SentimentSliderProp
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-stretch">
+        <div className="flex w-full flex-col gap-1 rounded-xl border border-border-muted/70 bg-linear-to-b from-surface to-surface-raised p-1 shadow-inner shadow-black/5 sm:inline-flex sm:w-auto sm:flex-row sm:flex-wrap">
         {SENTIMENTS.map((s) => {
           const isActive = s.value === value;
           return (
@@ -27,10 +28,10 @@ export default function SentimentSlider({ value, onChange }: SentimentSliderProp
               type="button"
               onClick={() => onChange(s.value)}
               className={`
-                rounded-lg border px-4 py-2.5 text-sm font-medium transition-all duration-150
+                rounded-lg px-3.5 py-2.5 text-left text-sm font-medium transition-all duration-150
                 ${isActive
-                  ? "border-brand bg-brand-subtle text-brand"
-                  : "border-border-muted bg-surface text-secondary hover:border-border-hover hover:text-primary"
+                  ? "bg-surface text-brand shadow-sm ring-1 ring-black/6"
+                  : "text-secondary hover:bg-surface/80 hover:text-primary"
                 }
               `}
             >
@@ -38,6 +39,7 @@ export default function SentimentSlider({ value, onChange }: SentimentSliderProp
             </button>
           );
         })}
+        </div>
       </div>
       <p className="text-xs text-secondary italic">
         {activeHint}

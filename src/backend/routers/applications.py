@@ -14,6 +14,8 @@ from src.backend.config import settings
 from src.backend.database import get_session
 from src.backend.models import Application, Resume, Template, User
 from src.backend.schemas import (
+    ApplicationRegenerateCoverPdfResponse,
+    ApplicationRegenerateResumePdfResponse,
     ApplicationResponse,
     CloneRequest,
     CloneResponse,
@@ -30,10 +32,12 @@ from src.backend.services.auth_service import get_current_user
 from src.backend.services.history_service import clone_application
 from src.backend.services.profile_photo import resolved_photo_path
 from src.backend.services.resume_parser import html_to_plain_text
+from src.backend.services.pdf_renderer import build_cover_letter_pdf, build_resume_pdf
 from src.backend.services.tailor_engine import (
     finalize_document,
     generate_draft,
     regenerate_section,
+    resume_contact_from_user,
     tailor_resume,
 )
 
@@ -46,6 +50,11 @@ def _profile_photo_path_for_user(user: User | None) -> Path | None:
     if user is None:
         return None
     return resolved_photo_path(getattr(user, "profile_photo_path", None))
+
+
+def _export_snapshot_present(app: Application) -> bool:
+    raw = getattr(app, "export_snapshot", None)
+    return bool(raw and isinstance(raw, dict))
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +101,7 @@ async def tailor(
             template_path=template_path,
             template_style=payload.template_style,
             profile_photo_path=photo_path,
+            resume_contact=resume_contact_from_user(user),
         )
     except Exception:
         logger.exception("Tailoring engine failed")
@@ -107,7 +117,11 @@ async def tailor(
         job_description_html=payload.job_description_html,
         cover_letter_sentiment=payload.cover_letter_sentiment,
         tailored_resume_url=result["tailored_resume_url"],
+        cover_letter_url=result.get("cover_letter_url") or None,
+        resume_pdf_url=result.get("resume_pdf_url") or None,
+        cover_letter_pdf_url=result.get("cover_letter_pdf_url") or None,
         cover_letter_text=result["cover_letter_text"],
+        export_snapshot=result.get("export_snapshot"),
     )
     session.add(application)
     await session.commit()
@@ -203,10 +217,16 @@ async def tailor_confirm(
             content=content,
             template_style=payload.template_style,
             profile_photo_path=_profile_photo_path_for_user(user),
+            resume_contact=resume_contact_from_user(user),
         )
     except Exception:
         logger.exception("Document finalization failed")
         raise HTTPException(status_code=500, detail="Document generation encountered an error")
+
+    confirm_snapshot = {
+        **content,
+        "template_style": (payload.template_style or "classic"),
+    }
 
     application = Application(
         id=uuid.uuid4(),
@@ -218,7 +238,11 @@ async def tailor_confirm(
         job_description_html=payload.job_description_html,
         cover_letter_sentiment=payload.cover_letter_sentiment,
         tailored_resume_url=result["resume_url"],
+        cover_letter_url=result.get("cover_letter_url") or None,
+        resume_pdf_url=result.get("resume_pdf_url") or None,
+        cover_letter_pdf_url=result.get("cover_letter_pdf_url") or None,
         cover_letter_text=payload.cover_letter,
+        export_snapshot=confirm_snapshot,
     )
     session.add(application)
     await session.commit()
@@ -312,9 +336,13 @@ async def list_user_applications(
             job_description_html=a.job_description_html,
             cover_letter_sentiment=a.cover_letter_sentiment,
             tailored_resume_url=a.tailored_resume_url,
+            cover_letter_url=a.cover_letter_url,
+            resume_pdf_url=a.resume_pdf_url,
+            cover_letter_pdf_url=a.cover_letter_pdf_url,
             cover_letter_text=a.cover_letter_text,
             reference_application_id=a.reference_application_id,
             created_at=a.created_at.isoformat(),
+            export_snapshot_present=_export_snapshot_present(a),
         )
         for a in applications
     ]
@@ -339,10 +367,92 @@ async def get_application(
         job_description_html=a.job_description_html,
         cover_letter_sentiment=a.cover_letter_sentiment,
         tailored_resume_url=a.tailored_resume_url,
+        cover_letter_url=a.cover_letter_url,
+        resume_pdf_url=a.resume_pdf_url,
+        cover_letter_pdf_url=a.cover_letter_pdf_url,
         cover_letter_text=a.cover_letter_text,
         reference_application_id=a.reference_application_id,
         created_at=a.created_at.isoformat(),
+        export_snapshot_present=_export_snapshot_present(a),
     )
+
+
+@router.post(
+    "/applications/{application_id}/exports/resume-pdf",
+    response_model=ApplicationRegenerateResumePdfResponse,
+)
+async def regenerate_application_resume_pdf(
+    application_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ApplicationRegenerateResumePdfResponse:
+    """Rebuild resume PDF using the same pipeline as tailor confirm (snapshot + current profile photo/contact)."""
+    a = await session.get(Application, application_id)
+    if a is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if a.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    raw = getattr(a, "export_snapshot", None)
+    if not raw or not isinstance(raw, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="No export snapshot for this application — cannot rebuild PDF.",
+        )
+    style = str(raw.get("template_style") or "classic").strip() or "classic"
+    content = {k: v for k, v in raw.items() if k != "template_style"}
+    user = await session.get(User, a.user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        fn = build_resume_pdf(
+            content,
+            template_style=style,
+            profile_photo_path=_profile_photo_path_for_user(user),
+            resume_contact=resume_contact_from_user(user),
+        )
+    except Exception:
+        logger.exception("Regenerate resume PDF failed")
+        raise HTTPException(status_code=500, detail="Could not generate resume PDF")
+    a.resume_pdf_url = fn
+    await session.commit()
+    await session.refresh(a)
+    return ApplicationRegenerateResumePdfResponse(resume_pdf_url=fn)
+
+
+@router.post(
+    "/applications/{application_id}/exports/cover-letter-pdf",
+    response_model=ApplicationRegenerateCoverPdfResponse,
+)
+async def regenerate_application_cover_letter_pdf(
+    application_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> ApplicationRegenerateCoverPdfResponse:
+    """Rebuild cover letter PDF the same way as finalize_document."""
+    a = await session.get(Application, application_id)
+    if a is None:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if a.user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not allowed")
+    raw = getattr(a, "export_snapshot", None)
+    if not raw or not isinstance(raw, dict):
+        raise HTTPException(
+            status_code=422,
+            detail="No export snapshot for this application — cannot rebuild PDF.",
+        )
+    style = str(raw.get("template_style") or "classic").strip() or "classic"
+    text = (raw.get("cover_letter") or "").strip()
+    if not text:
+        raise HTTPException(status_code=422, detail="No cover letter text in snapshot")
+    try:
+        fn = build_cover_letter_pdf(text, template_style=style)
+    except Exception:
+        logger.exception("Regenerate cover letter PDF failed")
+        raise HTTPException(status_code=500, detail="Could not generate cover letter PDF")
+    a.cover_letter_pdf_url = fn
+    await session.commit()
+    await session.refresh(a)
+    return ApplicationRegenerateCoverPdfResponse(cover_letter_pdf_url=fn)
 
 
 @router.post("/applications/{application_id}/clone", response_model=CloneResponse)
@@ -368,8 +478,11 @@ async def clone(
 
     return CloneResponse(
         new_application_id=new_app.id,
-        tailored_resume_url=new_app.tailored_resume_url,  # type: ignore[arg-type]
-        cover_letter_text=new_app.cover_letter_text,  # type: ignore[arg-type]
+        tailored_resume_url=new_app.tailored_resume_url or "",
+        cover_letter_text=new_app.cover_letter_text or "",
+        cover_letter_url=new_app.cover_letter_url or "",
+        resume_pdf_url=new_app.resume_pdf_url or "",
+        cover_letter_pdf_url=new_app.cover_letter_pdf_url or "",
     )
 
 
@@ -387,9 +500,15 @@ async def delete_application(
     if application is None:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    if application.tailored_resume_url:
-        output_file = settings.output_dir / application.tailored_resume_url
-        output_file.unlink(missing_ok=True)
+    out = settings.output_dir
+    for name in (
+        application.tailored_resume_url,
+        application.cover_letter_url,
+        application.resume_pdf_url,
+        application.cover_letter_pdf_url,
+    ):
+        if name:
+            (out / name).unlink(missing_ok=True)
 
     await session.delete(application)
     await session.commit()

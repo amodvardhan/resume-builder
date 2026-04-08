@@ -361,6 +361,26 @@ export async function deleteApplication(
   await api.delete(`/api/v1/applications/${applicationId}`);
 }
 
+/** Rebuild resume PDF from stored export snapshot (History parity with tailor confirm). */
+export async function regenerateApplicationResumePdf(
+  applicationId: string,
+): Promise<{ resume_pdf_url: string }> {
+  const { data } = await api.post<{ resume_pdf_url: string }>(
+    `/api/v1/applications/${applicationId}/exports/resume-pdf`,
+  );
+  return data;
+}
+
+/** Rebuild cover letter PDF from stored export snapshot. */
+export async function regenerateApplicationCoverLetterPdf(
+  applicationId: string,
+): Promise<{ cover_letter_pdf_url: string }> {
+  const { data } = await api.post<{ cover_letter_pdf_url: string }>(
+    `/api/v1/applications/${applicationId}/exports/cover-letter-pdf`,
+  );
+  return data;
+}
+
 // ---------------------------------------------------------------------------
 // Dashboard — on-demand compatibility for a job listing
 // ---------------------------------------------------------------------------
@@ -378,8 +398,58 @@ export async function scoreListingCompatibility(
 // File download (utility endpoint)
 // ---------------------------------------------------------------------------
 
+/** Public URL for display only — browser navigation does not send `Authorization`. */
 export function getFileDownloadUrl(fileName: string): string {
   return `${BASE_URL}/api/v1/files/${encodeURIComponent(fileName)}`;
+}
+
+async function _blobResponseErrorMessage(blob: Blob): Promise<string> {
+  try {
+    const t = await blob.text();
+    const j = JSON.parse(t) as { detail?: unknown };
+    if (typeof j.detail === "string") return j.detail;
+  } catch {
+    /* ignore */
+  }
+  return "Download failed";
+}
+
+/**
+ * Fetches `/api/v1/files/...` with the Bearer token and triggers a file save.
+ * Use this instead of `<a href={getFileDownloadUrl(...)}>` so the request is authenticated.
+ */
+export async function downloadGeneratedFile(fileName: string): Promise<void> {
+  const path = `/api/v1/files/${encodeURIComponent(fileName)}`;
+  const safeName = fileName.replace(/^.*[\\/]/, "") || "download";
+
+  try {
+    const res = await api.get<Blob>(path, { responseType: "blob" });
+    const ct = (res.headers["content-type"] || "").toLowerCase();
+    const blob = res.data;
+    if (ct.includes("application/json")) {
+      const text = await blob.text();
+      const j = JSON.parse(text) as { detail?: string };
+      throw new Error(typeof j.detail === "string" ? j.detail : "Download failed");
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = safeName;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch (err) {
+    if (err instanceof AxiosError && err.response?.data instanceof Blob) {
+      const msg = await _blobResponseErrorMessage(err.response.data);
+      throw new Error(msg);
+    }
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------

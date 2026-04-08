@@ -27,6 +27,31 @@ from src.backend.config import settings
 logger = logging.getLogger(__name__)
 
 
+def resume_contact_from_user(user: Any) -> dict[str, str] | None:
+    """
+    Identity lines for resume header / sidebar (from User row).
+    Order preserved for display: full_name, linkedin_url, country, phone, email.
+    """
+    if user is None:
+        return None
+    out: dict[str, str] = {}
+    fn = (getattr(user, "full_name", None) or "").strip()
+    if fn:
+        out["full_name"] = fn
+    em = (getattr(user, "email", None) or "").strip()
+    if em:
+        out["email"] = em
+    for key, attr in (
+        ("linkedin_url", "linkedin_url"),
+        ("country", "country"),
+        ("phone", "phone"),
+    ):
+        v = getattr(user, attr, None)
+        if v and str(v).strip():
+            out[key] = str(v).strip()
+    return out or None
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -477,6 +502,139 @@ def _split_entries(text: str) -> list[str]:
     return [e.strip() for e in re.split(r"[;\n]", text) if e.strip()]
 
 
+def _strip_table_borders_docx(table: Any) -> None:
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+
+    tbl = table._tbl
+    tblPr = tbl.tblPr
+    if tblPr is None:
+        tblPr = OxmlElement("w:tblPr")
+        tbl.insert(0, tblPr)
+    for old in list(tblPr):
+        if old.tag.endswith("tblBorders"):
+            tblPr.remove(old)
+    borders = OxmlElement("w:tblBorders")
+    for side in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement(f"w:{side}")
+        el.set(qn("w:val"), "none")
+        el.set(qn("w:sz"), "0")
+        el.set(qn("w:space"), "0")
+        el.set(qn("w:color"), "auto")
+        borders.append(el)
+    tblPr.append(borders)
+
+
+def _fill_docx_contact_cell(
+    cell: Any,
+    resume_contact: dict[str, str],
+    *,
+    name_size: float = 14,
+    line_size: float = 9,
+    accent_rgb: tuple[int, int, int] | None = None,
+) -> None:
+    """Contact lines in order: name, LinkedIn, country, phone, email."""
+    from docx.shared import Pt, RGBColor
+
+    acc = accent_rgb or (0x33, 0x6B, 0x87)
+
+    def _line(label: str | None, value: str) -> None:
+        p = cell.add_paragraph()
+        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.space_before = Pt(0)
+        if label:
+            r1 = p.add_run(f"{label}: ")
+            r1.font.size = Pt(line_size - 0.5)
+            r1.font.name = "Calibri"
+            r1.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+        r2 = p.add_run(value)
+        r2.font.size = Pt(line_size)
+        r2.font.name = "Calibri"
+        r2.font.color.rgb = RGBColor(0x33, 0x40, 0x55)
+
+    if resume_contact.get("full_name"):
+        p = cell.paragraphs[0]
+        p.paragraph_format.space_after = Pt(4)
+        run = p.add_run(resume_contact["full_name"])
+        run.bold = True
+        run.font.size = Pt(name_size)
+        run.font.name = "Calibri"
+        run.font.color.rgb = RGBColor(*acc)
+
+    if resume_contact.get("linkedin_url"):
+        _line("LinkedIn", resume_contact["linkedin_url"])
+    if resume_contact.get("country"):
+        _line("Country", resume_contact["country"])
+    if resume_contact.get("phone"):
+        _line("Phone", resume_contact["phone"])
+    if resume_contact.get("email"):
+        _line("Email", resume_contact["email"])
+
+
+def _prepend_contact_photo_header_docx(
+    doc: Any,
+    profile_photo_path: Path | None,
+    resume_contact: dict[str, str] | None,
+) -> None:
+    """Insert at top: [contact | photo] or single column."""
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Inches, Pt
+
+    has_ph = profile_photo_path and profile_photo_path.is_file()
+    rc = resume_contact or {}
+    has_id = bool(
+        rc.get("full_name")
+        or rc.get("email")
+        or rc.get("phone")
+        or rc.get("country")
+        or rc.get("linkedin_url")
+    )
+    if not has_ph and not has_id:
+        return
+
+    if has_ph and not has_id:
+        _prepend_profile_photo_block(doc, profile_photo_path)  # type: ignore[arg-type]
+        return
+
+    if has_id and not has_ph:
+        table = doc.add_table(rows=1, cols=1)
+        _strip_table_borders_docx(table)
+        _fill_docx_contact_cell(table.cell(0, 0), rc)
+        tbl = table._tbl
+        body = doc.element.body
+        body.remove(tbl)
+        body.insert(0, tbl)
+        p_sp = doc.add_paragraph()
+        p_sp.paragraph_format.space_after = Pt(10)
+        sp_el = p_sp._element
+        body.remove(sp_el)
+        body.insert(1, sp_el)
+        return
+
+    table = doc.add_table(rows=1, cols=2)
+    _strip_table_borders_docx(table)
+    table.columns[0].width = int(Inches(6.0))
+    table.columns[1].width = int(Inches(1.2))
+    left = table.cell(0, 0)
+    right = table.cell(0, 1)
+    _fill_docx_contact_cell(left, rc)
+    rp = right.paragraphs[0]
+    rp.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    rr = rp.add_run()
+    rr.add_picture(str(profile_photo_path), width=Inches(1.05))
+    rp.paragraph_format.space_after = Pt(6)
+
+    tbl = table._tbl
+    body = doc.element.body
+    body.remove(tbl)
+    body.insert(0, tbl)
+    spacer = doc.add_paragraph()
+    spacer.paragraph_format.space_after = Pt(10)
+    sp_el = spacer._element
+    body.remove(sp_el)
+    body.insert(1, sp_el)
+
+
 def _prepend_profile_photo_block(doc: Any, photo_path: Path) -> None:
     """Right-aligned headshot at the top of the document body."""
     from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -510,6 +668,7 @@ def _build_classic_resume(
     doc: Any,
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> None:
     from docx.shared import Pt, Inches, RGBColor
 
@@ -527,8 +686,7 @@ def _build_classic_resume(
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
 
-    if profile_photo_path and profile_photo_path.is_file():
-        _prepend_profile_photo_block(doc, profile_photo_path)
+    _prepend_contact_photo_header_docx(doc, profile_photo_path, resume_contact)
 
     if content.get("summary"):
         _add_heading(doc, "Professional Summary")
@@ -562,10 +720,59 @@ def _build_classic_resume(
         _add_separated_entries(doc, _split_entries(content["certifications"]))
 
 
+def _add_modern_sidebar_identity(sidebar: Any, resume_contact: dict[str, str] | None) -> None:
+    if not resume_contact:
+        return
+    rc = resume_contact
+    if not any(rc.get(k) for k in ("full_name", "email", "phone", "country", "linkedin_url")):
+        return
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.shared import Pt, RGBColor
+
+    acc = RGBColor(0x33, 0x6B, 0x87)
+    lab = RGBColor(0x64, 0x74, 0x8B)
+    body = RGBColor(0x33, 0x40, 0x55)
+
+    def _row(label: str, value: str) -> None:
+        p = sidebar.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(2)
+        r0 = p.add_run(f"{label}: ")
+        r0.font.size = Pt(7.5)
+        r0.font.name = "Calibri"
+        r0.font.color.rgb = lab
+        r1 = p.add_run(value)
+        r1.font.size = Pt(8.5)
+        r1.font.name = "Calibri"
+        r1.font.color.rgb = body
+
+    if rc.get("full_name"):
+        p = sidebar.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.paragraph_format.space_after = Pt(6)
+        r = p.add_run(rc["full_name"])
+        r.bold = True
+        r.font.size = Pt(12)
+        r.font.name = "Calibri"
+        r.font.color.rgb = acc
+    if rc.get("linkedin_url"):
+        _row("LinkedIn", rc["linkedin_url"])
+    if rc.get("country"):
+        _row("Country", rc["country"])
+    if rc.get("phone"):
+        _row("Phone", rc["phone"])
+    if rc.get("email"):
+        _row("Email", rc["email"])
+
+    p_div = sidebar.add_paragraph()
+    p_div.paragraph_format.space_after = Pt(10)
+
+
 def _build_modern_resume(
     doc: Any,
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> None:
     """Two-column layout: 30% sidebar flush-left, 70% main content."""
     from docx.shared import Pt, Inches, RGBColor, Cm, Emu
@@ -646,6 +853,9 @@ def _build_modern_resume(
         r_ph.add_picture(str(profile_photo_path), width=Inches(1.05))
         p_ph.paragraph_format.space_before = Pt(12)
         p_ph.paragraph_format.space_after = Pt(12)
+
+    if resume_contact:
+        _add_modern_sidebar_identity(sidebar, resume_contact)
 
     def _sidebar_heading(text: str) -> None:
         p = sidebar.add_paragraph()
@@ -747,6 +957,7 @@ def _build_minimal_resume(
     doc: Any,
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> None:
     """ATS-friendly: no colors, no decorations, maximum compatibility."""
     from docx.shared import Pt, Inches, RGBColor
@@ -765,8 +976,7 @@ def _build_minimal_resume(
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
 
-    if profile_photo_path and profile_photo_path.is_file():
-        _prepend_profile_photo_block(doc, profile_photo_path)
+    _prepend_contact_photo_header_docx(doc, profile_photo_path, resume_contact)
 
     def _minimal_heading(text: str) -> None:
         p = doc.add_paragraph()
@@ -809,6 +1019,7 @@ def _build_executive_resume(
     doc: Any,
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> None:
     """Premium layout with a dark header band and strong visual hierarchy."""
     from docx.shared import Pt, Inches, RGBColor
@@ -827,8 +1038,7 @@ def _build_executive_resume(
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
 
-    if profile_photo_path and profile_photo_path.is_file():
-        _prepend_profile_photo_block(doc, profile_photo_path)
+    _prepend_contact_photo_header_docx(doc, profile_photo_path, resume_contact)
 
     # Dark header band
     header_table = doc.add_table(rows=1, cols=1)
@@ -887,6 +1097,7 @@ def _build_creative_resume(
     doc: Any,
     content: dict[str, Any],
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> None:
     """Bold design with accent color headings and a colored top band."""
     from docx.shared import Pt, Inches, RGBColor
@@ -905,8 +1116,7 @@ def _build_creative_resume(
     style.paragraph_format.space_before = Pt(0)
     style.paragraph_format.line_spacing = Pt(14)
 
-    if profile_photo_path and profile_photo_path.is_file():
-        _prepend_profile_photo_block(doc, profile_photo_path)
+    _prepend_contact_photo_header_docx(doc, profile_photo_path, resume_contact)
 
     # Gradient-style accent bar at top
     bar_table = doc.add_table(rows=1, cols=2)
@@ -965,13 +1175,14 @@ def build_resume_docx(
     content: dict[str, Any],
     template_style: str | None = None,
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> str:
     """Build a styled resume docx from scratch using the selected gallery template."""
     settings.output_dir.mkdir(parents=True, exist_ok=True)
 
     doc = Document()
     builder = _STYLE_BUILDERS.get(template_style or "classic", _build_classic_resume)
-    builder(doc, content, profile_photo_path)
+    builder(doc, content, profile_photo_path, resume_contact)
 
     output_filename = f"{uuid.uuid4()}.docx"
     output_path = settings.output_dir / output_filename
@@ -1398,6 +1609,7 @@ def finalize_document(
     content: dict[str, Any],
     template_style: str | None = None,
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Phase 2 of human-in-the-loop: take the (possibly user-edited) content
@@ -1432,6 +1644,7 @@ def finalize_document(
             content,
             template_style=template_style,
             profile_photo_path=profile_photo_path,
+            resume_contact=resume_contact,
         )
 
     cover_letter_text = content.get("cover_letter", "")
@@ -1441,6 +1654,7 @@ def finalize_document(
         content,
         template_style=template_style,
         profile_photo_path=profile_photo_path,
+        resume_contact=resume_contact,
     )
     cl_pdf = build_cover_letter_pdf(cover_letter_text, template_style=template_style) if cover_letter_text else ""
 
@@ -1464,6 +1678,7 @@ async def tailor_resume(
     template_style: str | None = None,
     history_context: str = "",
     profile_photo_path: Path | None = None,
+    resume_contact: dict[str, str] | None = None,
 ) -> dict[str, str]:
     """
     Full pipeline (kept for backward-compat with clone flow):
@@ -1487,7 +1702,11 @@ async def tailor_resume(
         content=draft,
         template_style=template_style,
         profile_photo_path=profile_photo_path,
+        resume_contact=resume_contact,
     )
+
+    snap = dict(draft)
+    snap["template_style"] = (template_style or "classic")
 
     return {
         "tailored_resume_url": result["resume_url"],
@@ -1495,4 +1714,5 @@ async def tailor_resume(
         "cover_letter_url": result["cover_letter_url"],
         "resume_pdf_url": result.get("resume_pdf_url", ""),
         "cover_letter_pdf_url": result.get("cover_letter_pdf_url", ""),
+        "export_snapshot": snap,
     }

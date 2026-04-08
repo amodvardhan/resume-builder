@@ -11,7 +11,8 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Underline from "@tiptap/extension-underline";
 import TextAlign from "@tiptap/extension-text-align";
-import type { TailorPreviewResponse } from "../types/api";
+import type { ResumeContactInfo, TailorPreviewResponse } from "../types/api";
+import ResumeIdentityPanel from "./ResumeIdentityPanel";
 
 /* ═══════════════════════════════════════════════════════════════════════
    Types
@@ -24,6 +25,8 @@ interface DraftReviewProps {
   templateStyle?: TemplateStyle;
   /** Optional headshot (object URL) from Profile — matches PDF/DOCX export */
   profilePhotoSrc?: string | null;
+  /** Name, LinkedIn, country, phone, email from Profile — matches PDF/DOCX */
+  resumeContact?: ResumeContactInfo | null;
   onConfirm: (edited: TailorPreviewResponse) => void;
   onBack: () => void;
   onRegenerate?: () => void;
@@ -1083,6 +1086,7 @@ export default function DraftReview({
   draft,
   templateStyle = "classic",
   profilePhotoSrc,
+  resumeContact,
   onConfirm,
   onBack,
   onRegenerate,
@@ -1254,10 +1258,11 @@ export default function DraftReview({
                         <img
                           src={profilePhotoSrc}
                           alt=""
-                          className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
+                          className="h-[7.25rem] w-[7.25rem] rounded-full border-2 border-[rgba(51,107,135,0.25)] object-cover shadow-sm"
                         />
                       </div>
                     ) : null}
+                    <ResumeIdentityPanel contact={resumeContact} variant="modern" />
                     {sidebarSections.map(renderSectionBlock)}
                   </div>
                   <div className="tpl-main space-y-6">
@@ -1266,15 +1271,20 @@ export default function DraftReview({
                 </div>
               ) : (
                 <div className="px-12 py-10 sm:px-16 sm:py-12">
-                  {profilePhotoSrc ? (
-                    <div className="mb-4 flex justify-end">
-                      <img
-                        src={profilePhotoSrc}
-                        alt=""
-                        className="h-28 w-28 rounded-md border border-border-muted object-cover shadow-sm"
-                      />
+                  <div className="mb-4 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 flex-1">
+                      <ResumeIdentityPanel contact={resumeContact} variant="strip" />
                     </div>
-                  ) : null}
+                    {profilePhotoSrc ? (
+                      <div className="flex shrink-0 justify-end sm:pt-0">
+                        <img
+                          src={profilePhotoSrc}
+                          alt=""
+                          className="h-[7.25rem] w-[7.25rem] rounded-full border-2 border-border-muted object-cover shadow-sm"
+                        />
+                      </div>
+                    ) : null}
+                  </div>
                   {(templateStyle === "executive" || templateStyle === "creative") && (
                     <div className="tpl-header">
                       <div className="text-[10px] font-medium uppercase tracking-widest opacity-70">

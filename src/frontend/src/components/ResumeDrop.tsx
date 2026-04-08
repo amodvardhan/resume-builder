@@ -73,7 +73,7 @@ export default function ResumeDrop({
     const data = uploadMutation.data;
     return (
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-secondary">
+        <label className="ui-label">
           Your Resume
         </label>
         <div className="flex items-center gap-3 rounded-xl border border-success/20 bg-success-light px-4 py-3.5">
@@ -113,7 +113,7 @@ export default function ResumeDrop({
   if (uploadBlocked) {
     return (
       <div className="space-y-2">
-        <label className="block text-xs font-medium text-secondary">
+        <label className="ui-label">
           Your Resume
         </label>
         <div className="rounded-xl border border-border-muted bg-muted/40 px-4 py-6 text-center">
@@ -126,7 +126,7 @@ export default function ResumeDrop({
 
   return (
     <div className="space-y-2">
-      <label className="block text-xs font-medium text-secondary">
+      <label className="ui-label">
         Your Resume
       </label>
 
@@ -139,14 +139,9 @@ export default function ResumeDrop({
         onClick={onClickArea}
         onKeyDown={(e) => e.key === "Enter" && onClickArea()}
         className={`
-          relative flex cursor-pointer flex-col items-center justify-center
-          rounded-xl px-6 py-8 transition-all duration-200
-          ${
-            isDragOver
-              ? "border-2 border-solid border-brand bg-brand-subtle"
-              : "border-2 border-dashed border-brand/30 bg-brand-subtle/50 hover:border-brand/50 hover:bg-brand-subtle"
-          }
-          ${isLoading ? "pointer-events-none opacity-60" : ""}
+          ui-dropzone relative flex cursor-pointer flex-col items-center justify-center px-6 py-8
+          ${isDragOver ? "ui-dropzone--active" : ""}
+          ${isLoading ? "ui-dropzone--disabled pointer-events-none opacity-60" : ""}
         `}
       >
         {isLoading ? (

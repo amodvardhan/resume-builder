@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
   usePreferences,
   useUpdatePreferences,
@@ -44,29 +44,75 @@ const TARGET_JOB_MARKETS: { code: string; label: string }[] = [
   { code: "za", label: "South Africa" },
 ];
 
-const SECTION_META: Record<string, { icon: string; description: string }> = {
+function SectionIcon({ children }: { children: ReactNode }) {
+  return (
+    <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-linear-to-br from-brand/10 to-indigo-500/10 text-brand shadow-sm ring-1 ring-brand/10">
+      {children}
+    </span>
+  );
+}
+
+const SECTION_META: Record<string, { icon: ReactNode; description: string }> = {
   Industry: {
-    icon: "🏢",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 21h19.5m-18-18v18m10.5-18v18m6-13.5V21M6.75 6.75h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75zM9 6.75h.75v.75H9v-.75zm0 3h.75v.75H9v-.75zm0 3h.75v.75H9v-.75zm0 3h.75v.75H9v-.75zm6.75-9h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75zm0 3h.75v.75h-.75v-.75z" />
+        </svg>
+      </SectionIcon>
+    ),
     description: "Which sector are you targeting?",
   },
   "Role Categories": {
-    icon: "🎯",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.568 3H5.25A2.25 2.25 0 003 5.25v4.318c0 .597.237 1.17.659 1.591l9.581 9.581c.699.699 1.78.872 2.607.33a18.095 18.095 0 005.223-5.223c.542-.827.369-1.908-.33-2.607L11.16 3.66A2.25 2.25 0 009.568 3z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 6h.008v.008H6V6z" />
+        </svg>
+      </SectionIcon>
+    ),
     description: "Select all roles that interest you.",
   },
   "Preferred Locations": {
-    icon: "📍",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M15 10.5a3 3 0 11-6 0 3 3 0 016 0z" />
+          <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 10.5c0 7.142-7.5 11.25-7.5 11.25S4.5 17.642 4.5 10.5a7.5 7.5 0 1115 0z" />
+        </svg>
+      </SectionIcon>
+    ),
     description: "Where do you want to work?",
   },
   "Experience Level": {
-    icon: "📈",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v7.125C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z" />
+        </svg>
+      </SectionIcon>
+    ),
     description: "What seniority fits your background?",
   },
   Keywords: {
-    icon: "🔑",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09z" />
+        </svg>
+      </SectionIcon>
+    ),
     description: "Skills and terms the AI should prioritize.",
   },
   "Job search countries": {
-    icon: "🌍",
+    icon: (
+      <SectionIcon>
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-[18px] w-[18px]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418" />
+        </svg>
+      </SectionIcon>
+    ),
     description:
       "Scopes every job source (Adzuna, Jooble, LinkedIn, XING, Naukri Gulf, and any future feeds). Leave empty to use the server default for Adzuna and location text for Jooble; secondary sources are not filtered by country until you choose at least one market.",
   },
@@ -187,8 +233,8 @@ export default function PreferencesPage() {
 
   if (prefs.isLoading) {
     return (
-      <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="space-y-6">
+      <div className="page-enter page-shell">
+        <div className="mx-auto w-full max-w-2xl space-y-6">
           {Array.from({ length: 5 }).map((_, i) => (
             <div
               key={i}
@@ -204,7 +250,8 @@ export default function PreferencesPage() {
   }
 
   return (
-    <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
+    <div className="page-enter page-shell">
+      <div className="mx-auto w-full max-w-2xl">
       <div className="animate-fade-in-up mb-10">
         <p className="text-xs font-semibold uppercase tracking-wider text-brand">
           Step 1 — Search profile
@@ -226,7 +273,7 @@ export default function PreferencesPage() {
           <select
             value={form.industry ?? ""}
             onChange={(e) => handleIndustryChange(e.target.value)}
-            className="w-full rounded-xl border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10"
+            className="ui-select mt-1.5"
           >
             <option value="">Select an industry</option>
             {industries.map((ind) => (
@@ -345,12 +392,13 @@ export default function PreferencesPage() {
                 }
               }}
               placeholder="e.g. New York, Remote, Geneva"
-              className="flex-1 rounded-xl border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/40 transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10"
+              className="ui-input flex-1"
             />
             <button
+              type="button"
               onClick={addLocation}
               disabled={!locationInput.trim()}
-              className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-brand-dark disabled:opacity-40"
+              className="ui-btn-primary shrink-0 px-5 py-2.5 text-xs"
             >
               Add
             </button>
@@ -387,7 +435,7 @@ export default function PreferencesPage() {
                 experience_level: e.target.value || null,
               }))
             }
-            className="w-full rounded-xl border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10"
+            className="ui-select mt-1.5"
           >
             <option value="">Select experience level</option>
             {EXPERIENCE_LEVELS.map((lv) => (
@@ -412,12 +460,13 @@ export default function PreferencesPage() {
                 }
               }}
               placeholder="e.g. Python, project management, DevOps"
-              className="flex-1 rounded-xl border border-border-muted bg-surface px-4 py-2.5 text-sm text-primary placeholder:text-secondary/40 transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/10"
+              className="ui-input flex-1"
             />
             <button
+              type="button"
               onClick={addKeyword}
               disabled={!keywordInput.trim()}
-              className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-brand-dark disabled:opacity-40"
+              className="ui-btn-primary shrink-0 px-5 py-2.5 text-xs"
             >
               Add
             </button>
@@ -447,9 +496,10 @@ export default function PreferencesPage() {
         {/* Save button */}
         <div className="animate-fade-in-up stagger-5 pt-2">
           <button
+            type="button"
             onClick={handleSave}
             disabled={updatePrefs.isPending}
-            className="w-full rounded-xl bg-brand py-3.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:bg-brand-dark hover:shadow-md active:scale-[0.99] disabled:opacity-50"
+            className="ui-btn-primary w-full py-3.5 text-[15px]"
           >
             {updatePrefs.isPending ? (
               <span className="flex items-center justify-center gap-2">
@@ -492,9 +542,10 @@ export default function PreferencesPage() {
                 </p>
               </div>
               <button
+                type="button"
                 onClick={handleJobSync}
                 disabled={triggerSync.isPending}
-                className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-brand-dark disabled:opacity-50"
+                className="ui-btn-primary shrink-0 px-4 py-2.5 text-xs"
               >
                 {triggerSync.isPending ? "Searching…" : "Search from here"}
               </button>
@@ -510,6 +561,7 @@ export default function PreferencesPage() {
             </p>
           </div>
         )}
+      </div>
       </div>
     </div>
   );
@@ -531,13 +583,9 @@ function Section({
   const meta = SECTION_META[title];
 
   return (
-    <div className={`animate-fade-in-up ${stagger} rounded-2xl border border-border-light bg-surface p-6 shadow-sm transition-shadow duration-200 hover:shadow-md`}>
+    <div className={`meridian-card-solid animate-fade-in-up ${stagger} p-6 transition-all duration-200 hover:shadow-(--shadow-float)`}>
       <div className="mb-4 flex items-center gap-3">
-        {meta && (
-          <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-muted text-base">
-            {meta.icon}
-          </span>
-        )}
+        {meta && meta.icon}
         <div>
           <h2 className="text-sm font-semibold text-primary">{title}</h2>
           {meta && (
