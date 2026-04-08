@@ -238,12 +238,14 @@
 * [x] Filtering and pagination support.
   > Status filter (all/new/saved/applied/dismissed), score range, prev/next pagination.
 * [x] Empty state with preference setup prompt.
-  > Friendly message with buttons to set preferences and trigger crawl.
+  > Friendly message with buttons to set preferences and trigger job sync.
 
-## REQ-017: Admin-Managed Job Crawl Sources
+## v4.0: Job integrations (replaces crawl / REQ-017 crawl stack)
 
-* [x] `users.is_admin` + `APP_ADMIN_EMAILS` bootstrap; `auth/me`, login, register expose `is_admin`.
-* [x] `job_crawl_sources` table + startup seed mirroring legacy industry-scoped sources.
-* [x] Crawler uses `resolve_crawl_source_pairs` (DB when table non-empty; else code fallback).
-* [x] Admin CRUD `/api/v1/admin/crawl-sources` + `get_current_admin` (403 non-admins).
-* [x] Frontend **Crawl admin** nav + `AdminCrawlSourcesPage` (in-app page, admins only).
+* [x] Removed HTML/API/RSS crawl pipeline (`job_crawler.py`), `job_crawl_sources`, admin crawl UI, and `JOB_SOURCE_REGISTRY` from `job_sources.py` (catalog only remains).
+* [x] Tables: `job_listings` + `job_sync_runs` (startup migration renames `crawled_jobs` / `crawl_runs` when present); `job_matches.job_id` → `job_listings.id`.
+* [x] Integrations — **primary:** `adzuna.py` (Adzuna job search API), `jooble.py` (Jooble REST). **secondary:** `linkedin.py`, `xing.py`, `naukri_gulf.py`. `sync.py` runs primary aggregators first, then secondary feeds.
+* [x] API: `POST /api/v1/jobs/sync`, `GET /api/v1/jobs/sync/status`; scheduler uses `APP_JOB_SYNC_CRON`.
+* [x] Frontend: Dashboard / Preferences use “Sync” copy; admin crawl nav removed. `users.is_admin` retained for future use.
+
+**Note:** **Primary** search uses [Adzuna](https://developer.adzuna.com) and [Jooble](https://jooble.org/api/about) official APIs (credentials required). **Secondary:** LinkedIn job *search* is not on the public consumer API; the stack uses **organization job postings** for partners. XING lists **your** vendor postings with a contract. Naukri Gulf needs a **feed URL** from InfoEdge when available.

@@ -1,9 +1,9 @@
 """
-Job match scoring — LangChain-powered comparison of resumes against crawled jobs.
+Job match scoring — LangChain-powered comparison of resumes against ingested job listings.
 
 Responsibilities:
   1. Score a candidate's resume against a single job description (skill, experience, role fit).
-  2. Batch-score all unscored crawled jobs for a user after a crawl completes.
+  2. Batch-score all unscored jobs for a user after a sync completes.
   3. Persist JobMatch rows with ON CONFLICT DO NOTHING for race-condition safety.
 """
 
@@ -18,13 +18,19 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.config import settings
 from src.backend.database import async_session_factory
-from src.backend.models import CrawledJob, JobMatch, JobPreference, Resume, User
+from src.backend.models import (
+    JobListing,
+    JobMatch,
+    JobPreference,
+    Resume,
+    User,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -143,7 +149,7 @@ async def _score_one(
     sem: asyncio.Semaphore,
     resume_text: str,
     core_skills: list[str],
-    job: CrawledJob,
+    job: JobListing,
     user_id: uuid.UUID,
     session: AsyncSession,
 ) -> JobMatch | None:
@@ -187,8 +193,19 @@ async def _score_one(
 # ---------------------------------------------------------------------------
 
 
-async def score_new_matches(user_id: uuid.UUID) -> int:
-    """Score all unscored crawled jobs for a user. Returns the count of new matches created."""
+async def score_new_matches(
+    user_id: uuid.UUID,
+    *,
+    listing_ids: list[uuid.UUID] | None = None,
+) -> int:
+    """Score unscored job listings for a user.
+
+    If ``listing_ids`` is set (e.g. after a sync), only those rows are considered
+    and preference filters are skipped — they already matched the user's search.
+
+    If ``listing_ids`` is None, backlog scoring uses industry / role filters.
+    Returns the count of new JobMatch rows inserted.
+    """
     async with async_session_factory() as session:
         # 1. Load the user's latest active resume
         resume_row = (
@@ -224,7 +241,7 @@ async def score_new_matches(user_id: uuid.UUID) -> int:
             )
         ).scalar_one_or_none()
 
-        # 4. Build the query for unscored CrawledJob rows
+        # 4. Build the query for unscored JobListing rows
         already_scored_subq = (
             select(JobMatch.job_id)
             .where(JobMatch.user_id == user_id)
@@ -232,25 +249,41 @@ async def score_new_matches(user_id: uuid.UUID) -> int:
         )
 
         jobs_query = (
-            select(CrawledJob)
-            .where(CrawledJob.id.notin_(select(already_scored_subq.c.job_id)))
+            select(JobListing)
+            .where(JobListing.id.notin_(select(already_scored_subq.c.job_id)))
         )
 
-        if pref_row is not None:
+        if listing_ids is not None:
+            if not listing_ids:
+                logger.info(
+                    "score_new_matches: empty listing_ids for user %s — skipping",
+                    user_id,
+                )
+                return 0
+            jobs_query = jobs_query.where(JobListing.id.in_(listing_ids))
+        elif pref_row is not None:
             filters: list[Any] = []
             if pref_row.industry:
-                filters.append(CrawledJob.industry == pref_row.industry)
+                pi = pref_row.industry.strip()
+                filters.append(
+                    func.lower(func.coalesce(JobListing.industry, "")) == pi.lower(),
+                )
             role_cats: list[str] = (
                 pref_row.role_categories
                 if isinstance(pref_row.role_categories, list)
                 else []
             )
             if role_cats:
-                filters.append(CrawledJob.role_category.in_(role_cats))
+                filters.append(
+                    or_(
+                        JobListing.role_category.in_(role_cats),
+                        JobListing.role_category.is_(None),
+                    ),
+                )
             if filters:
                 jobs_query = jobs_query.where(*filters)
 
-        unscored_jobs: list[CrawledJob] = list(
+        unscored_jobs: list[JobListing] = list(
             (await session.execute(jobs_query)).scalars().all()
         )
 
@@ -306,3 +339,78 @@ async def score_new_matches(user_id: uuid.UUID) -> int:
         )
 
         return inserted_count
+
+
+async def score_and_upsert_match_for_listing(
+    user_id: uuid.UUID,
+    listing_id: uuid.UUID,
+) -> JobMatch:
+    """Score the user's active resume against one listing; insert or update ``JobMatch``."""
+    async with async_session_factory() as session:
+        job = await session.get(JobListing, listing_id)
+        if job is None:
+            raise LookupError("listing_not_found")
+
+        resume_row = (
+            await session.execute(
+                select(Resume)
+                .where(Resume.user_id == user_id, Resume.is_active.is_(True))
+                .order_by(Resume.created_at.desc())
+                .limit(1),
+            )
+        ).scalar_one_or_none()
+        if resume_row is None:
+            raise LookupError("no_active_resume")
+
+        user_row = await session.get(User, user_id)
+        if user_row is None:
+            raise LookupError("user_not_found")
+
+        core_skills: list[str] = (
+            user_row.core_skills if isinstance(user_row.core_skills, list) else []
+        )
+
+        score = await score_single_match(
+            resume_text=resume_row.extracted_text,
+            core_skills=core_skills,
+            job_description=job.description_text,
+        )
+
+        details: dict[str, Any] = {
+            "strengths": score.strengths,
+            "gaps": score.gaps,
+            "recommendation": score.recommendation,
+        }
+
+        existing = (
+            await session.execute(
+                select(JobMatch).where(
+                    JobMatch.user_id == user_id,
+                    JobMatch.job_id == listing_id,
+                ),
+            )
+        ).scalar_one_or_none()
+
+        if existing:
+            existing.overall_score = score.overall_score
+            existing.skill_match_score = score.skill_match_score
+            existing.experience_match_score = score.experience_match_score
+            existing.role_fit_score = score.role_fit_score
+            existing.match_details = details
+            match = existing
+        else:
+            match = JobMatch(
+                user_id=user_id,
+                job_id=listing_id,
+                overall_score=score.overall_score,
+                skill_match_score=score.skill_match_score,
+                experience_match_score=score.experience_match_score,
+                role_fit_score=score.role_fit_score,
+                match_details=details,
+                status="new",
+            )
+            session.add(match)
+
+        await session.commit()
+        await session.refresh(match)
+        return match

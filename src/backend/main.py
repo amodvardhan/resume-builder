@@ -14,12 +14,10 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.database import Base, async_session_factory, engine
 from src.backend.models import Resume
 from src.backend.routers import (
-    admin_crawl_sources,
     applications,
     auth,
     dashboard,
@@ -30,7 +28,6 @@ from src.backend.routers import (
     templates,
     users,
 )
-from src.backend.services.crawl_sources_service import ensure_default_crawl_sources
 from src.backend.services.resume_parser import extract_resume_text
 from src.backend.services.scheduler import shutdown_scheduler, start_scheduler
 
@@ -139,6 +136,182 @@ async def _apply_schema_migrations() -> None:
             logger.info("Migrated: added is_admin to users (REQ-017)")
 
 
+async def _migrate_job_tables() -> None:
+    """Replace crawl-era tables with job_listings / job_sync_runs (integrations)."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        await conn.execute(text("DROP TABLE IF EXISTS job_crawl_sources CASCADE"))
+
+        has_crawled = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'crawled_jobs'"
+        ))
+        has_listings = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings'"
+        ))
+
+        if has_crawled.scalar() is not None:
+            if has_listings.scalar() is None:
+                await conn.execute(text("ALTER TABLE crawled_jobs RENAME TO job_listings"))
+                logger.info("Renamed crawled_jobs -> job_listings")
+            else:
+                n_list = await conn.execute(text("SELECT COUNT(*) FROM job_listings"))
+                nl = n_list.scalar() or 0
+                has_matches = await conn.execute(text(
+                    "SELECT 1 FROM information_schema.tables "
+                    "WHERE table_schema = 'public' AND table_name = 'job_matches'"
+                ))
+                if has_matches.scalar() is not None:
+                    n_match = await conn.execute(text("SELECT COUNT(*) FROM job_matches"))
+                    nm = n_match.scalar() or 0
+                else:
+                    nm = 0
+                if nl == 0 and nm == 0:
+                    await conn.execute(text("DROP TABLE job_listings CASCADE"))
+                    await conn.execute(text("ALTER TABLE crawled_jobs RENAME TO job_listings"))
+                    logger.info(
+                        "Dropped empty job_listings; renamed crawled_jobs -> job_listings",
+                    )
+                else:
+                    logger.warning(
+                        "Both crawled_jobs and job_listings exist (listings=%d, matches=%d); "
+                        "skipping rename — resolve manually if upgrading.",
+                        nl,
+                        nm,
+                    )
+
+        has_cr = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'crawl_runs'"
+        ))
+        has_sr = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_sync_runs'"
+        ))
+        if has_cr.scalar() is not None and has_sr.scalar() is None:
+            await conn.execute(text("ALTER TABLE crawl_runs RENAME TO job_sync_runs"))
+            logger.info("Renamed crawl_runs -> job_sync_runs")
+
+        jl = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings'"
+        ))
+        if jl.scalar() is None:
+            return
+
+        await conn.execute(text(
+            "ALTER TABLE job_listings ADD COLUMN IF NOT EXISTS provider VARCHAR(32) "
+            "NOT NULL DEFAULT 'legacy'"
+        ))
+
+        has_scraped = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings' "
+            "AND column_name = 'scraped_at'"
+        ))
+        if has_scraped.scalar() is not None:
+            await conn.execute(text(
+                "ALTER TABLE job_listings RENAME COLUMN scraped_at TO ingested_at"
+            ))
+            logger.info("Renamed job_listings.scraped_at -> ingested_at")
+
+        await conn.execute(text(
+            "ALTER TABLE job_listings DROP CONSTRAINT IF EXISTS uq_crawled_jobs_source_external"
+        ))
+        await conn.execute(text(
+            "UPDATE job_listings SET external_id = source_name || '::' || external_id "
+            "WHERE provider = 'legacy' AND external_id NOT LIKE '%::%'"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE job_listings DROP CONSTRAINT IF EXISTS uq_job_listings_provider_external"
+        ))
+        await conn.execute(text(
+            "ALTER TABLE job_listings ADD CONSTRAINT uq_job_listings_provider_external "
+            "UNIQUE (provider, external_id)"
+        ))
+
+
+async def _migrate_job_sync_runs_sources_column() -> None:
+    """Add sources_breakdown JSONB for per-provider listing counts per sync run."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        has_sr = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_sync_runs'"
+        ))
+        if has_sr.scalar() is None:
+            return
+        sb = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_sync_runs' "
+            "AND column_name = 'sources_breakdown'"
+        ))
+        if sb.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_sync_runs ADD COLUMN sources_breakdown JSONB"
+            ))
+            logger.info("Migrated: job_sync_runs.sources_breakdown")
+
+        mc = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_sync_runs' "
+            "AND column_name = 'matches_created'"
+        ))
+        if mc.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_sync_runs ADD COLUMN matches_created INTEGER NOT NULL DEFAULT 0"
+            ))
+            logger.info("Migrated: job_sync_runs.matches_created")
+
+        lb = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_sync_runs' "
+            "AND column_name = 'last_batch_listing_ids'"
+        ))
+        if lb.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_sync_runs ADD COLUMN last_batch_listing_ids JSONB"
+            ))
+            logger.info("Migrated: job_sync_runs.last_batch_listing_ids")
+
+
+async def _migrate_job_listing_application_metadata() -> None:
+    """Add application_closes_at and accepts_applications to job_listings."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        jl = await conn.execute(text(
+            "SELECT 1 FROM information_schema.tables "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings'"
+        ))
+        if jl.scalar() is None:
+            return
+        ca = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings' "
+            "AND column_name = 'application_closes_at'"
+        ))
+        if ca.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_listings ADD COLUMN application_closes_at TIMESTAMPTZ"
+            ))
+            logger.info("Migrated: job_listings.application_closes_at")
+        aa = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'job_listings' "
+            "AND column_name = 'accepts_applications'"
+        ))
+        if aa.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE job_listings ADD COLUMN accepts_applications BOOLEAN "
+                "NOT NULL DEFAULT true"
+            ))
+            logger.info("Migrated: job_listings.accepts_applications")
+
+
 async def _reparse_resumes_background() -> None:
     """CPU-heavy file parsing must not block application startup."""
     try:
@@ -188,7 +361,6 @@ app.include_router(resumes.router)
 app.include_router(applications.router)
 app.include_router(preferences.router)
 app.include_router(jobs.router)
-app.include_router(admin_crawl_sources.router)
 app.include_router(dashboard.router)
 app.include_router(files.router)
 
@@ -200,6 +372,10 @@ app.include_router(files.router)
 
 @app.on_event("startup")
 async def _startup() -> None:
+    await _migrate_job_tables()
+    await _migrate_job_sync_runs_sources_column()
+    await _migrate_job_listing_application_metadata()
+
     lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
     async with engine.begin() as conn:
         await conn.execute(lt)
@@ -223,9 +399,6 @@ async def _startup() -> None:
                 _MIGRATION_RETRY_DELAY_SEC,
             )
             await asyncio.sleep(_MIGRATION_RETRY_DELAY_SEC)
-
-    async with AsyncSession(engine) as session:
-        await ensure_default_crawl_sources(session)
 
     asyncio.create_task(_reparse_resumes_background())
     start_scheduler()

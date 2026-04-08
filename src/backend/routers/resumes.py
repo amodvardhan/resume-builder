@@ -135,7 +135,11 @@ async def list_user_resumes(
     ]
 
 
-@router.delete("/resumes/{resume_id}", status_code=204)
+@router.delete(
+    "/resumes/{resume_id}",
+    status_code=204,
+    response_model=None,
+)
 async def delete_resume(
     resume_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

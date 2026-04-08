@@ -210,6 +210,7 @@ export interface DashboardStats {
   tier_70_89: number;
   tier_50_69: number;
   tier_below_50: number;
+  integrations_configured: Record<string, boolean>;
 }
 
 export interface JobSummary {
@@ -219,7 +220,9 @@ export interface JobSummary {
   location: string | null;
   url: string | null;
   source_name: string;
+  provider?: string;
   posted_at: string | null;
+  description_text?: string;
 }
 
 export interface MatchListItem {
@@ -250,14 +253,67 @@ export interface MatchDetail extends MatchListItem {
   };
 }
 
-export interface CrawlStatus {
+export interface JobPostingEnrichment {
+  status: "none" | "fetched" | "skipped_substantial" | "failed";
+  message?: string | null;
+}
+
+export interface JobListingWithScore {
+  id: string;
+  provider: string;
+  source_name: string;
+  title: string;
+  organization: string | null;
+  location: string | null;
+  url: string | null;
+  salary_range: string | null;
+  posted_at: string | null;
+  /** Application deadline when known (e.g. schema.org validThrough after fetch). */
+  application_closes_at: string | null;
+  industry: string | null;
+  role_category: string | null;
+  created_at: string;
+  match_id: string | null;
+  overall_score: number | null;
+  description_html: string | null;
+  description_text: string;
+  /** Present after POST /jobs/listings/:id/fetch-posting (full JD from posting URL). */
+  posting_enrichment?: JobPostingEnrichment | null;
+}
+
+/** Pre-fills Create Application job fields (e.g. from Latest search jobs). */
+export interface ComposeJobPrefill {
+  job_title: string;
+  organization: string;
+  job_description_html: string;
+}
+
+export interface JobListingWithScoreList {
+  items: JobListingWithScore[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+export interface JobSyncStatus {
   id: string;
   status: string;
   jobs_found: number;
   jobs_new: number;
+  /** Provider id (e.g. adzuna, jooble) → count after keyword filter on last completed run. */
+  sources_breakdown: Record<string, number> | null;
+  /** JobMatch rows created when AI ran after this sync. */
+  matches_created: number;
+  /** Whether server has API credentials for each integration (empty = source is skipped). */
+  integrations_configured: Record<string, boolean>;
   started_at: string;
   finished_at: string | null;
   error_message: string | null;
+}
+
+export interface JobSyncTriggerResponse {
+  message: string;
+  status: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -297,51 +353,6 @@ export interface RegisterResponse {
   email: string;
   core_skills: string[];
   is_admin?: boolean;
-}
-
-// ---------------------------------------------------------------------------
-// REQ-017 Admin crawl sources
-// ---------------------------------------------------------------------------
-
-export interface CrawlSource {
-  id: string;
-  source_key: string;
-  display_name: string;
-  source_type: "api" | "html_scraper" | "rss";
-  url_template: string;
-  headers: Record<string, string>;
-  rate_limit_seconds: number;
-  selectors: Record<string, string>;
-  industries: string[];
-  enabled: boolean;
-  sort_order: number;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface CrawlSourceCreatePayload {
-  source_key: string;
-  display_name: string;
-  source_type: "api" | "html_scraper" | "rss";
-  url_template: string;
-  headers?: Record<string, string>;
-  rate_limit_seconds?: number;
-  selectors?: Record<string, string>;
-  industries?: string[];
-  enabled?: boolean;
-  sort_order?: number;
-}
-
-export interface CrawlSourceUpdatePayload {
-  display_name?: string;
-  source_type?: "api" | "html_scraper" | "rss";
-  url_template?: string;
-  headers?: Record<string, string>;
-  rate_limit_seconds?: number;
-  selectors?: Record<string, string>;
-  industries?: string[];
-  enabled?: boolean;
-  sort_order?: number;
 }
 
 export interface RefreshResponse {

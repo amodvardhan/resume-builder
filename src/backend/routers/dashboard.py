@@ -11,8 +11,9 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from src.backend.config import job_integrations_configured
 from src.backend.database import get_session
-from src.backend.models import CrawledJob, JobMatch, Resume, User
+from src.backend.models import JobListing, JobMatch, Resume, User
 from src.backend.routers._helpers import (
     match_detail_response,
     match_list_item_response,
@@ -28,6 +29,7 @@ from src.backend.schemas import (
     MatchStatusUpdateRequest,
 )
 from src.backend.services.auth_service import get_current_user
+from src.backend.services.job_matcher import score_and_upsert_match_for_listing
 from src.backend.services.tailor_engine import generate_draft
 
 logger = logging.getLogger(__name__)
@@ -104,6 +106,7 @@ async def dashboard_stats(
         tier_70_89=tier_70_89,
         tier_50_69=tier_50_69,
         tier_below_50=tier_below_50,
+        integrations_configured=job_integrations_configured(),
     )
 
 
@@ -139,7 +142,7 @@ async def list_matches(
 
     items: list[MatchListItemResponse] = []
     for m in matches:
-        job = await session.get(CrawledJob, m.job_id)
+        job = await session.get(JobListing, m.job_id)
         if job is None:
             continue
         items.append(match_list_item_response(m, job))
@@ -162,9 +165,44 @@ async def get_match(
     if match is None or match.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    job = await session.get(CrawledJob, match.job_id)
+    job = await session.get(JobListing, match.job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Associated job not found")
+
+    return match_detail_response(match, job)
+
+
+@router.post(
+    "/listings/{listing_id}/compatibility",
+    response_model=MatchDetailResponse,
+)
+async def score_listing_compatibility(
+    listing_id: uuid.UUID,
+    session: AsyncSession = Depends(get_session),
+    current_user: User = Depends(get_current_user),
+) -> MatchDetailResponse:
+    """Score the current user's resume against this job listing (creates or updates a match card)."""
+    try:
+        match = await score_and_upsert_match_for_listing(
+            current_user.id,
+            listing_id,
+        )
+    except LookupError as exc:
+        code = str(exc)
+        if code == "listing_not_found":
+            raise HTTPException(status_code=404, detail="Job listing not found")
+        if code == "no_active_resume":
+            raise HTTPException(
+                status_code=400,
+                detail="Upload your resume in Profile first.",
+            )
+        if code == "user_not_found":
+            raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=400, detail="Unable to score this listing")
+
+    job = await session.get(JobListing, listing_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job listing not found")
 
     return match_detail_response(match, job)
 
@@ -203,7 +241,7 @@ async def match_apply(
     if match is None or match.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    job = await session.get(CrawledJob, match.job_id)
+    job = await session.get(JobListing, match.job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="Associated job not found")
 

@@ -359,7 +359,11 @@ async def clone(
     )
 
 
-@router.delete("/applications/{application_id}", status_code=204)
+@router.delete(
+    "/applications/{application_id}",
+    status_code=204,
+    response_model=None,
+)
 async def delete_application(
     application_id: uuid.UUID,
     session: AsyncSession = Depends(get_session),

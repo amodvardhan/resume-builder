@@ -11,10 +11,12 @@ import {
   useTailorConfirm,
   useRegenerateSection,
   useUploadResume,
+  useUserResumes,
 } from "../hooks/useResumeEngine";
 import { useReferenceEngine } from "../hooks/useHistory";
 import { extractErrorMessage, getFileDownloadUrl } from "../api/client";
 import type {
+  ComposeJobPrefill,
   TemplateUploadResponse,
   ResumeUploadResponse,
   TailorPreviewResponse,
@@ -31,6 +33,8 @@ interface ComposePageProps {
   onPhaseChange: (phase: ComposePhase) => void;
   hidden: boolean;
   resetSignal: number;
+  /** Job fields from dashboard / matches; parent clears when leaving compose (see App). */
+  jobPrefill: ComposeJobPrefill | null;
 }
 
 export default function ComposePage({
@@ -39,6 +43,7 @@ export default function ComposePage({
   onPhaseChange,
   hidden,
   resetSignal,
+  jobPrefill,
 }: ComposePageProps) {
   const [resumeId, setResumeId] = useState<string | null>(null);
   const [templateId, setTemplateId] = useState<string | null>(null);
@@ -56,8 +61,25 @@ export default function ComposePage({
   const confirmMutation = useTailorConfirm();
   const sectionRegenMutation = useRegenerateSection();
   const resumeUploadMutation = useUploadResume(userId);
+  const resumesQuery = useUserResumes(userId);
 
   const { mode, baselineContext } = refEngine;
+
+  useEffect(() => {
+    if (resumeId) return;
+    const active = resumesQuery.data?.find((r) => r.is_active);
+    if (active) setResumeId(active.resume_id);
+  }, [resumesQuery.data, resumeId]);
+
+  useEffect(() => {
+    if (!jobPrefill) return;
+    setJobTitle(jobPrefill.job_title);
+    setOrganization(jobPrefill.organization);
+    setJobDescriptionHtml(jobPrefill.job_description_html);
+    setComposePhase("input");
+    setDraft(null);
+    setResult(null);
+  }, [jobPrefill]);
 
   // Sync phase changes to parent for footer visibility
   useEffect(() => {

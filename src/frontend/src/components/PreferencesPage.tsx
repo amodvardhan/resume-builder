@@ -4,7 +4,7 @@ import {
   useUpdatePreferences,
   usePreferencesCatalog,
 } from "../hooks/usePreferences";
-import { useTriggerCrawl } from "../hooks/useDashboard";
+import { useTriggerJobSync } from "../hooks/useDashboard";
 import { extractErrorMessage } from "../api/client";
 import type { JobPreferences } from "../types/api";
 
@@ -44,7 +44,7 @@ export default function PreferencesPage() {
   const prefs = usePreferences();
   const catalog = usePreferencesCatalog();
   const updatePrefs = useUpdatePreferences();
-  const triggerCrawl = useTriggerCrawl();
+  const triggerSync = useTriggerJobSync();
 
   const [form, setForm] = useState<JobPreferences>({
     industry: null,
@@ -135,9 +135,9 @@ export default function PreferencesPage() {
     });
   }, [form, updatePrefs]);
 
-  const handleCrawl = useCallback(() => {
-    triggerCrawl.mutate();
-  }, [triggerCrawl]);
+  const handleJobSync = useCallback(() => {
+    triggerSync.mutate();
+  }, [triggerSync]);
 
   if (prefs.isLoading) {
     return (
@@ -160,12 +160,17 @@ export default function PreferencesPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-10 sm:px-6 lg:px-8">
       <div className="animate-fade-in-up mb-10">
-        <h1 className="text-3xl font-bold tracking-tight text-primary">
-          Job Preferences
+        <p className="text-xs font-semibold uppercase tracking-wider text-brand">
+          Step 1 — Search profile
+        </p>
+        <h1 className="mt-1 text-3xl font-bold tracking-tight text-primary">
+          What jobs should we find?
         </h1>
-        <p className="mt-2 text-sm leading-relaxed text-secondary">
-          Configure your ideal job criteria. These guide the AI job matching
-          engine.
+        <p className="mt-2 max-w-xl text-sm leading-relaxed text-secondary">
+          Meridian uses this profile to query job boards and to filter
+          listings before AI scores them against your resume. Choose an
+          industry and at least one role or keyword, save, then run a search
+          from the Matches page.
         </p>
       </div>
 
@@ -401,15 +406,16 @@ export default function PreferencesPage() {
                   Preferences saved
                 </p>
                 <p className="mt-0.5 text-xs text-secondary">
-                  Want to find matching jobs now?
+                  Open Matches and tap &quot;Search job boards&quot; to import
+                  listings.
                 </p>
               </div>
               <button
-                onClick={handleCrawl}
-                disabled={triggerCrawl.isPending}
+                onClick={handleJobSync}
+                disabled={triggerSync.isPending}
                 className="shrink-0 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white transition-all duration-200 hover:bg-brand-dark disabled:opacity-50"
               >
-                {triggerCrawl.isPending ? "Searching..." : "Search Now"}
+                {triggerSync.isPending ? "Searching…" : "Search from here"}
               </button>
             </div>
           </div>

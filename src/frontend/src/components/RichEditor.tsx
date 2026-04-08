@@ -2,7 +2,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Placeholder from "@tiptap/extension-placeholder";
 import DOMPurify from "dompurify";
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 interface RichEditorProps {
   value: string;
@@ -117,15 +117,14 @@ export default function RichEditor({ value, onChange, placeholder }: RichEditorP
     onBlur: () => setIsFocused(false),
   });
 
-  const resetEditor = useCallback(() => {
-    if (editor && !value && editor.getHTML() !== "<p></p>") {
-      editor.commands.clearContent();
-    }
-  }, [editor, value]);
-
+  // useEditor only applies `content` on first mount. Prefill / parent state updates must be pushed in.
   useEffect(() => {
-    resetEditor();
-  }, [resetEditor]);
+    if (!editor) return;
+    const next = value?.trim() ? value : "<p></p>";
+    const current = editor.getHTML();
+    if (next === current) return;
+    editor.commands.setContent(next, { emitUpdate: false });
+  }, [editor, value]);
 
   return (
     <div>

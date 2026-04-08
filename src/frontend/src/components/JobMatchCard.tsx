@@ -6,6 +6,8 @@ interface JobMatchCardProps {
   match: MatchListItem;
   onStatusChange: (id: string, status: string) => void;
   onApply: (matchId: string) => void;
+  /** True while fetching job details for the compose prefill. */
+  applyBusy?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }
@@ -91,6 +93,7 @@ export default function JobMatchCard({
   match,
   onStatusChange,
   onApply,
+  applyBusy = false,
   isExpanded,
   onToggle,
 }: JobMatchCardProps) {
@@ -132,6 +135,12 @@ export default function JobMatchCard({
               <h3 className="truncate text-sm font-semibold text-primary">
                 {match.job.title}
               </h3>
+              <span
+                className="inline-flex max-w-[140px] shrink-0 truncate rounded-md bg-brand/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-brand"
+                title={`Listing source: ${match.job.source_name}`}
+              >
+                {match.job.source_name}
+              </span>
               {/* Status badge */}
               <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-secondary">
                 <span className={`h-1.5 w-1.5 rounded-full ${statusInfo.dot}`} />
@@ -169,7 +178,9 @@ export default function JobMatchCard({
                   <span className="text-secondary/30">&middot;</span>
                 </>
               )}
-              <span>{match.job.source_name}</span>
+              <span className="font-medium text-secondary/80">
+                {match.job.source_name}
+              </span>
               {posted && (
                 <>
                   <span className="text-secondary/30">&middot;</span>
@@ -272,14 +283,15 @@ export default function JobMatchCard({
           </button>
 
           <button
+            disabled={applyBusy}
             onClick={(e) => {
               e.stopPropagation();
               onApply(match.id);
             }}
             title="Apply"
-            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-subtle px-3 py-1.5 text-[11px] font-semibold text-brand transition-all duration-150 hover:bg-brand-light hover:shadow-sm"
+            className="ml-auto inline-flex items-center gap-1 rounded-lg bg-brand-subtle px-3 py-1.5 text-[11px] font-semibold text-brand transition-all duration-150 hover:bg-brand-light hover:shadow-sm disabled:opacity-50"
           >
-            Apply
+            {applyBusy ? "Loading…" : "Apply"}
             <svg
               xmlns="http://www.w3.org/2000/svg"
               className="h-3 w-3"
@@ -304,6 +316,7 @@ export default function JobMatchCard({
           detail={detail.data}
           isLoading={detail.isLoading}
           onApply={onApply}
+          applyBusy={applyBusy}
         />
       )}
     </div>

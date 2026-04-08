@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import type { UserProfile } from "../types/api";
+import type { ResumeUploadResponse, UserProfile } from "../types/api";
 import { extractErrorMessage } from "../api/client";
+import { useUploadResume, useUserResumes } from "../hooks/useResumeEngine";
+import ResumeDrop from "./ResumeDrop";
 
 interface ProfilePageProps {
+  userId: string;
   profile: UserProfile;
   onSave: (updates: {
     full_name?: string;
@@ -13,11 +16,27 @@ interface ProfilePageProps {
   error: unknown;
 }
 
-export default function ProfilePage({ profile, onSave, isSaving, error }: ProfilePageProps) {
+export default function ProfilePage({
+  userId,
+  profile,
+  onSave,
+  isSaving,
+  error,
+}: ProfilePageProps) {
   const [fullName, setFullName] = useState(profile.full_name);
   const [email, setEmail] = useState(profile.email);
   const [skillsText, setSkillsText] = useState(profile.core_skills.join(", "));
   const [saved, setSaved] = useState(false);
+
+  const resumeUploadMutation = useUploadResume(userId);
+  const resumesQuery = useUserResumes(userId);
+
+  const handleResumeUploaded = useCallback(
+    (_res: ResumeUploadResponse) => {
+      void resumesQuery.refetch();
+    },
+    [resumesQuery],
+  );
 
   useEffect(() => {
     setFullName(profile.full_name);
@@ -83,6 +102,46 @@ export default function ProfilePage({ profile, onSave, isSaving, error }: Profil
                 />
               </div>
             </div>
+          </div>
+        </div>
+
+        {/* Resume */}
+        <div className="rounded-2xl border border-border-light bg-surface shadow-sm">
+          <div className="border-b border-border-light px-6 py-4 sm:px-8">
+            <h2 className="text-sm font-semibold text-primary">Resume</h2>
+            <p className="mt-0.5 text-xs text-secondary">
+              Your latest resume drives AI tailoring and job compatibility scoring
+              across the app. Upload a .docx or .pdf file.
+            </p>
+          </div>
+          <div className="p-6 sm:p-8">
+            <ResumeDrop
+              onUploaded={handleResumeUploaded}
+              uploadMutation={resumeUploadMutation}
+            />
+            {resumesQuery.data && resumesQuery.data.length > 0 && (
+              <ul className="mt-4 space-y-2 border-t border-border-muted pt-4">
+                {resumesQuery.data.map((r) => (
+                  <li
+                    key={r.resume_id}
+                    className="flex items-center justify-between gap-3 text-sm text-primary"
+                  >
+                    <span className="truncate font-medium">
+                      {r.original_filename}
+                    </span>
+                    <span className="shrink-0 text-xs text-secondary">
+                      {r.is_active ? (
+                        <span className="rounded-full bg-brand-subtle px-2 py-0.5 font-medium text-brand">
+                          Active
+                        </span>
+                      ) : (
+                        <span className="text-secondary/80">Archived</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 

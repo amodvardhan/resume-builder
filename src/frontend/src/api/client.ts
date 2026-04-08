@@ -5,9 +5,6 @@ import type {
   AuthUser,
   CloneRequest,
   CloneResponse,
-  CrawlSource,
-  CrawlSourceCreatePayload,
-  CrawlSourceUpdatePayload,
   LoginResponse,
   RefreshResponse,
   RegenerateSectionRequest,
@@ -26,6 +23,7 @@ import type {
   UserCreatePayload,
   UserProfile,
   UserUpdatePayload,
+  MatchDetail,
 } from "../types/api";
 
 // ---------------------------------------------------------------------------
@@ -325,6 +323,19 @@ export async function deleteApplication(
 }
 
 // ---------------------------------------------------------------------------
+// Dashboard — on-demand compatibility for a job listing
+// ---------------------------------------------------------------------------
+
+export async function scoreListingCompatibility(
+  listingId: string,
+): Promise<MatchDetail> {
+  const { data } = await api.post<MatchDetail>(
+    `/api/v1/dashboard/listings/${listingId}/compatibility`,
+  );
+  return data;
+}
+
+// ---------------------------------------------------------------------------
 // File download (utility endpoint)
 // ---------------------------------------------------------------------------
 
@@ -372,45 +383,4 @@ export async function authRefresh(data: {
 export async function authMe(): Promise<AuthUser> {
   const { data } = await api.get<AuthUser>("/api/v1/auth/me");
   return data;
-}
-
-// ---------------------------------------------------------------------------
-// Admin — crawl sources (REQ-017)
-// ---------------------------------------------------------------------------
-
-export async function adminListCrawlSources(): Promise<CrawlSource[]> {
-  const { data } = await api.get<CrawlSource[]>("/api/v1/admin/crawl-sources");
-  return data;
-}
-
-export async function adminCreateCrawlSource(
-  payload: CrawlSourceCreatePayload,
-): Promise<CrawlSource> {
-  const { data } = await api.post<CrawlSource>(
-    "/api/v1/admin/crawl-sources",
-    payload,
-  );
-  return data;
-}
-
-export async function adminGetCrawlSource(id: string): Promise<CrawlSource> {
-  const { data } = await api.get<CrawlSource>(
-    `/api/v1/admin/crawl-sources/${id}`,
-  );
-  return data;
-}
-
-export async function adminPatchCrawlSource(
-  id: string,
-  payload: CrawlSourceUpdatePayload,
-): Promise<CrawlSource> {
-  const { data } = await api.patch<CrawlSource>(
-    `/api/v1/admin/crawl-sources/${id}`,
-    payload,
-  );
-  return data;
-}
-
-export async function adminDeleteCrawlSource(id: string): Promise<void> {
-  await api.delete(`/api/v1/admin/crawl-sources/${id}`);
 }

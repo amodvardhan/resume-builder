@@ -6,7 +6,7 @@ Maps 1:1 to the contract in .context/architecture-global.md §3.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
 
@@ -238,27 +238,48 @@ class JobPreferenceResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Jobs / Crawling
+# Jobs (LinkedIn / XING / Naukri Gulf integrations)
 # ---------------------------------------------------------------------------
 
 
-class CrawlTriggerResponse(BaseModel):
+class JobSyncTriggerResponse(BaseModel):
     message: str
     status: str = "accepted"
 
 
-class CrawlStatusResponse(BaseModel):
+class JobSyncStatusResponse(BaseModel):
     id: uuid.UUID
     status: str
-    jobs_found: int
-    jobs_new: int
+    jobs_found: int = Field(
+        ...,
+        description=(
+            "Listings in this run that passed keyword filters (before insert)."
+        ),
+    )
+    jobs_new: int = Field(
+        ...,
+        description="Rows newly inserted into job_listings (excludes duplicates).",
+    )
+    sources_breakdown: dict[str, int] | None = Field(
+        default=None,
+        description="Counts per provider id (e.g. adzuna, jooble) after keyword filter.",
+    )
+    integrations_configured: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Whether each integration has env credentials (from server config).",
+    )
+    matches_created: int = Field(
+        default=0,
+        description="JobMatch rows created by AI scoring after this run.",
+    )
     started_at: str
     finished_at: str | None
     error_message: str | None
 
 
-class CrawledJobResponse(BaseModel):
+class JobListingResponse(BaseModel):
     id: uuid.UUID
+    provider: str
     source_name: str
     title: str
     organization: str | None
@@ -266,13 +287,38 @@ class CrawledJobResponse(BaseModel):
     url: str | None
     salary_range: str | None
     posted_at: str | None
+    application_closes_at: str | None = None
     industry: str | None
     role_category: str | None
     created_at: str
 
 
-class CrawledJobListResponse(BaseModel):
-    items: list[CrawledJobResponse]
+class JobListingListResponse(BaseModel):
+    items: list[JobListingResponse]
+    total: int
+    page: int
+    page_size: int
+
+
+class JobPostingEnrichment(BaseModel):
+    """How the full job description was obtained for compose (aggregators only return snippets)."""
+
+    status: Literal["none", "fetched", "skipped_substantial", "failed"] = "none"
+    message: str | None = None
+
+
+class JobListingWithScoreResponse(JobListingResponse):
+    """Listing row with optional AI match for the current user."""
+
+    match_id: uuid.UUID | None = None
+    overall_score: float | None = None
+    description_html: str | None = None
+    description_text: str = ""
+    posting_enrichment: JobPostingEnrichment | None = None
+
+
+class JobListingWithScoreListResponse(BaseModel):
+    items: list[JobListingWithScoreResponse]
     total: int
     page: int
     page_size: int
@@ -292,6 +338,10 @@ class DashboardStatsResponse(BaseModel):
     tier_70_89: int
     tier_50_69: int
     tier_below_50: int
+    integrations_configured: dict[str, bool] = Field(
+        default_factory=dict,
+        description="Job-board integrations with API keys on the server.",
+    )
 
 
 class JobSummaryResponse(BaseModel):
@@ -301,7 +351,9 @@ class JobSummaryResponse(BaseModel):
     location: str | None
     url: str | None
     source_name: str
+    provider: str = ""
     posted_at: str | None
+    description_text: str = ""
 
 
 class MatchListItemResponse(BaseModel):

@@ -178,57 +178,17 @@ class JobPreference(Base):
     )
 
 
-class JobCrawlSource(Base):
-    """Admin-configured job board / feed (REQ-017)."""
+class JobListing(Base):
+    """Job rows ingested from LinkedIn, XING, or Naukri Gulf integrations."""
 
-    __tablename__ = "job_crawl_sources"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, primary_key=True, default=uuid.uuid4
-    )
-    source_key: Mapped[str] = mapped_column(String(128), nullable=False, unique=True)
-    display_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    source_type: Mapped[str] = mapped_column(String(32), nullable=False)
-    url_template: Mapped[str] = mapped_column(Text, nullable=False)
-    headers: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    rate_limit_seconds: Mapped[float] = mapped_column(
-        Float, nullable=False, server_default="2"
-    )
-    selectors: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="{}"
-    )
-    industries: Mapped[dict] = mapped_column(
-        JSONB, nullable=False, server_default="[]"
-    )
-    enabled: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="true"
-    )
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        default=lambda: datetime.now(timezone.utc),
-        onupdate=lambda: datetime.now(timezone.utc),
-    )
-
-    __table_args__ = (
-        Index("idx_job_crawl_sources_enabled", "enabled"),
-    )
-
-
-class CrawledJob(Base):
-    __tablename__ = "crawled_jobs"
+    __tablename__ = "job_listings"
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
     )
+    provider: Mapped[str] = mapped_column(
+        String(32), nullable=False
+    )  # linkedin | xing | naukri_gulf | legacy
     source_name: Mapped[str] = mapped_column(String(255), nullable=False)
     external_id: Mapped[str] = mapped_column(String(1024), nullable=False)
     title: Mapped[str] = mapped_column(String(512), nullable=False)
@@ -241,7 +201,13 @@ class CrawledJob(Base):
     posted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
-    scraped_at: Mapped[datetime] = mapped_column(
+    application_closes_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    accepts_applications: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true",
+    )
+    ingested_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
@@ -256,14 +222,19 @@ class CrawledJob(Base):
     )
 
     __table_args__ = (
-        UniqueConstraint("source_name", "external_id", name="uq_crawled_jobs_source_external"),
-        Index("idx_crawled_jobs_industry_role", "industry", "role_category"),
-        Index("idx_crawled_jobs_scraped_at", "scraped_at"),
+        UniqueConstraint(
+            "provider", "external_id",
+            name="uq_job_listings_provider_external",
+        ),
+        Index("idx_job_listings_industry_role", "industry", "role_category"),
+        Index("idx_job_listings_ingested_at", "ingested_at"),
     )
 
 
-class CrawlRun(Base):
-    __tablename__ = "crawl_runs"
+class JobSyncRun(Base):
+    """Audit trail for user-triggered or scheduled job sync runs."""
+
+    __tablename__ = "job_sync_runs"
 
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid, primary_key=True, default=uuid.uuid4
@@ -278,6 +249,8 @@ class CrawlRun(Base):
     )
     jobs_found: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     jobs_new: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    # JobMatch rows inserted as a result of AI scoring after this run (same user).
+    matches_created: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     started_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -287,6 +260,10 @@ class CrawlRun(Base):
         DateTime(timezone=True), nullable=True
     )
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Per-provider counts of listings that passed keyword filter this run (provider id -> count).
+    sources_breakdown: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # job_listings.id values from this run's keyword batch (for "see all jobs from last search").
+    last_batch_listing_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -294,8 +271,8 @@ class CrawlRun(Base):
     )
 
     __table_args__ = (
-        Index("idx_crawl_runs_user_id", "user_id"),
-        Index("idx_crawl_runs_started_at", "user_id", "started_at"),
+        Index("idx_job_sync_runs_user_id", "user_id"),
+        Index("idx_job_sync_runs_started_at", "user_id", "started_at"),
     )
 
 
@@ -312,7 +289,7 @@ class JobMatch(Base):
     )
     job_id: Mapped[uuid.UUID] = mapped_column(
         Uuid,
-        ForeignKey("crawled_jobs.id", ondelete="CASCADE"),
+        ForeignKey("job_listings.id", ondelete="CASCADE"),
         nullable=False,
     )
     overall_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)

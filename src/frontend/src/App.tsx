@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useAuth } from "./contexts/AuthContext";
 import LoginPage from "./components/LoginPage";
 import RegisterPage from "./components/RegisterPage";
@@ -8,9 +8,9 @@ import HistoryPage from "./components/HistoryPage";
 import ProfilePage from "./components/ProfilePage";
 import Dashboard from "./components/Dashboard";
 import PreferencesPage from "./components/PreferencesPage";
-import AdminCrawlSourcesPage from "./components/AdminCrawlSourcesPage";
 import ComposePage from "./components/ComposePage";
 import type { ComposePhase } from "./components/ComposePage";
+import type { ComposeJobPrefill } from "./types/api";
 import { useUserProfile, useUpdateUser } from "./hooks/useResumeEngine";
 import { useReferenceEngine } from "./hooks/useHistory";
 
@@ -51,22 +51,22 @@ function AuthenticatedApp() {
   const [currentPage, setCurrentPage] = useState<PageView>("dashboard");
   const [composePhase, setComposePhase] = useState<ComposePhase>("input");
   const [composeResetSignal, setComposeResetSignal] = useState(0);
+  const [composeJobPrefill, setComposeJobPrefill] =
+    useState<ComposeJobPrefill | null>(null);
 
   const userProfile = useUserProfile(USER_ID);
   const updateUserMutation = useUpdateUser(USER_ID);
   const refEngine = useReferenceEngine(USER_ID);
 
-  useEffect(() => {
-    if (currentPage === "admin-crawl-sources" && !auth.user?.is_admin) {
-      setCurrentPage("dashboard");
-    }
-  }, [currentPage, auth.user?.is_admin]);
-
   const handleNavigate = useCallback(
     (page: PageView) => {
+      if (currentPage === "compose" && page !== "compose") {
+        setComposeJobPrefill(null);
+      }
       if (page === "compose" && currentPage !== "compose") {
         setComposeResetSignal((s) => s + 1);
         setComposePhase("input");
+        setComposeJobPrefill(null);
       }
       setCurrentPage(page);
     },
@@ -78,6 +78,7 @@ function AuthenticatedApp() {
       refEngine.selectReference(applicationId);
       setTimeout(() => {
         refEngine.activateBaseline();
+        setComposeJobPrefill(null);
         setComposeResetSignal((s) => s + 1);
         setComposePhase("input");
         setCurrentPage("compose");
@@ -93,24 +94,24 @@ function AuthenticatedApp() {
         onNavigate={handleNavigate}
         user={userProfile.data}
         isLoading={userProfile.isLoading}
-        isAdmin={!!auth.user?.is_admin}
       />
 
       <div className="flex flex-1 flex-col min-h-0">
         {/* ── Dashboard page ─────────────────────────────────────── */}
         {currentPage === "dashboard" && (
           <Dashboard
+            userId={USER_ID}
             onNavigatePreferences={() => setCurrentPage("preferences")}
-            onApply={() => setCurrentPage("compose")}
+            onNavigateProfile={() => setCurrentPage("profile")}
+            onComposeWithJobPrefill={(prefill) => {
+              setComposeJobPrefill(prefill);
+              setCurrentPage("compose");
+            }}
           />
         )}
 
         {/* ── Preferences page ─────────────────────────────────── */}
         {currentPage === "preferences" && <PreferencesPage />}
-
-        {currentPage === "admin-crawl-sources" && auth.user?.is_admin && (
-          <AdminCrawlSourcesPage />
-        )}
 
         {/* ── History page ────────────────────────────────────────── */}
         {currentPage === "history" && (
@@ -123,6 +124,7 @@ function AuthenticatedApp() {
         {/* ── Profile page ───────────────────────────────────────── */}
         {currentPage === "profile" && userProfile.data && (
           <ProfilePage
+            userId={USER_ID}
             profile={userProfile.data}
             onSave={(updates) => updateUserMutation.mutateAsync(updates).then(() => {})}
             isSaving={updateUserMutation.isPending}
@@ -137,6 +139,7 @@ function AuthenticatedApp() {
           onPhaseChange={setComposePhase}
           hidden={currentPage !== "compose"}
           resetSignal={composeResetSignal}
+          jobPrefill={composeJobPrefill}
         />
       </div>
 

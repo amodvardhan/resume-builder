@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+import bcrypt
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,16 +14,29 @@ from src.backend.config import settings
 from src.backend.database import get_session
 from src.backend.models import User
 
-_pwd_ctx = CryptContext(schemes=["bcrypt"], deprecated="auto")
 _bearer_scheme = HTTPBearer()
+
+# Bcrypt ignores bytes beyond 72 (same behavior as passlib's bcrypt wrapper).
+_MAX_PW = 72
+
+
+def _password_bytes(plain: str) -> bytes:
+    b = plain.encode("utf-8")
+    return b[:_MAX_PW] if len(b) > _MAX_PW else b
 
 
 def hash_password(plain: str) -> str:
-    return _pwd_ctx.hash(plain)
+    return bcrypt.hashpw(_password_bytes(plain), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain: str, hashed: str) -> bool:
-    return _pwd_ctx.verify(plain, hashed)
+    try:
+        return bcrypt.checkpw(
+            _password_bytes(plain),
+            hashed.encode("utf-8"),
+        )
+    except (ValueError, TypeError):
+        return False
 
 
 def create_access_token(user_id: uuid.UUID) -> str:

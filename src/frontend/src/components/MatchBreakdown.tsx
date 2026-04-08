@@ -5,6 +5,7 @@ interface MatchBreakdownProps {
   detail: MatchDetail | undefined;
   isLoading: boolean;
   onApply: (matchId: string) => void;
+  applyBusy?: boolean;
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -56,6 +57,7 @@ export default function MatchBreakdown({
   detail,
   isLoading,
   onApply,
+  applyBusy = false,
 }: MatchBreakdownProps) {
   if (isLoading) {
     return (
@@ -146,8 +148,10 @@ export default function MatchBreakdown({
       {/* Actions */}
       <div className="flex items-center gap-3 pt-1">
         <button
+          type="button"
+          disabled={applyBusy}
           onClick={() => onApply(detail.id)}
-          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:bg-brand-dark hover:shadow-md active:scale-[0.98]"
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition-all duration-200 hover:bg-brand-dark hover:shadow-md active:scale-[0.98] disabled:opacity-50"
         >
           <svg
             xmlns="http://www.w3.org/2000/svg"
@@ -163,7 +167,7 @@ export default function MatchBreakdown({
               d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
             />
           </svg>
-          Apply with Tailored Resume
+          {applyBusy ? "Loading…" : "Apply with Tailored Resume"}
         </button>
         {detail.job.url && (
           <a
