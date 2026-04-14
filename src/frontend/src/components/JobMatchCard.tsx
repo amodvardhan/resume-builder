@@ -1,4 +1,4 @@
-import { useMatchDetail } from "../hooks/useDashboard";
+import { useMatchDetail, type PatchMatchPayload } from "../hooks/useDashboard";
 import type { MatchListItem } from "../types/api";
 import MatchBreakdown from "./MatchBreakdown";
 
@@ -8,6 +8,9 @@ interface JobMatchCardProps {
   onApply: (matchId: string) => void;
   /** True while fetching job details for the compose prefill. */
   applyBusy?: boolean;
+  /** Save CRM fields (notes, follow-up, pipeline stage). */
+  onPatchMatch?: (payload: PatchMatchPayload) => void;
+  patchBusy?: boolean;
   isExpanded: boolean;
   onToggle: () => void;
 }
@@ -31,8 +34,11 @@ function relativeTime(dateStr: string | null): string {
 
 const STATUS_CONFIG: Record<string, { dot: string; label: string }> = {
   new: { dot: "bg-blue-500", label: "New" },
+  reviewing: { dot: "bg-sky-500", label: "Reviewing" },
   saved: { dot: "bg-amber-500", label: "Saved" },
   applied: { dot: "bg-emerald-500", label: "Applied" },
+  interviewing: { dot: "bg-violet-500", label: "Interviewing" },
+  rejected: { dot: "bg-slate-400", label: "Rejected" },
   dismissed: { dot: "bg-red-400", label: "Dismissed" },
 };
 
@@ -94,6 +100,8 @@ export default function JobMatchCard({
   onStatusChange,
   onApply,
   applyBusy = false,
+  onPatchMatch,
+  patchBusy = false,
   isExpanded,
   onToggle,
 }: JobMatchCardProps) {
@@ -103,6 +111,18 @@ export default function JobMatchCard({
   const posted = relativeTime(match.job.posted_at);
   const isSaved = match.status === "saved";
   const statusInfo = STATUS_CONFIG[match.status] ?? STATUS_CONFIG.new;
+  const followUp = match.next_follow_up_at
+    ? new Date(match.next_follow_up_at)
+    : null;
+  const followUpLabel =
+    followUp && !Number.isNaN(followUp.getTime())
+      ? followUp.toLocaleString(undefined, {
+          month: "short",
+          day: "numeric",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+      : null;
 
   return (
     <div
@@ -185,6 +205,17 @@ export default function JobMatchCard({
                 <>
                   <span className="text-secondary/30">&middot;</span>
                   <span>{posted}</span>
+                </>
+              )}
+              {followUpLabel && (
+                <>
+                  <span className="text-secondary/30">&middot;</span>
+                  <span
+                    className="text-violet-600/90"
+                    title="Next follow-up"
+                  >
+                    Follow-up {followUpLabel}
+                  </span>
                 </>
               )}
             </div>
@@ -317,6 +348,8 @@ export default function JobMatchCard({
           isLoading={detail.isLoading}
           onApply={onApply}
           applyBusy={applyBusy}
+          onPatchMatch={onPatchMatch}
+          patchBusy={patchBusy}
         />
       )}
     </div>

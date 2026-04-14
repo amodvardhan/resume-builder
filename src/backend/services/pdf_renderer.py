@@ -1,6 +1,6 @@
 """
 PDF renderer — generates resume and cover-letter PDFs from HTML/CSS that
-exactly mirrors the frontend UI preview.
+mirrors the frontend UI preview (same class names; A4 page size for exports).
 
 Uses WeasyPrint (pure-Python, cross-platform, no MS Word / LibreOffice /
 browser dependencies, no OS permission prompts).
@@ -67,10 +67,19 @@ _SHIELD_SVG = (
 # ---------------------------------------------------------------------------
 
 _PDF_CSS = r"""
-/* ── Reset & page ───────────────────────────────────────────────── */
-@page { size: letter; margin: 0; }
+/* ── Reset & page (A4 — matches standard hiring / print expectations) ─ */
+@page {
+  size: A4;
+  margin: 12mm 14mm 14mm 14mm;
+}
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { width: 8.5in; margin: 0; padding: 0; }
+/* Fill the page box; do not fix Letter width (8.5in) on A4 — causes overflow pages */
+html, body {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  padding: 0;
+}
 
 body {
   font-family: 'Calibri', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
@@ -81,11 +90,12 @@ body {
 }
 
 .doc-page {
-  width: 8.5in;
-  min-height: 11in;
+  width: 100%;
+  max-width: 100%;
   background: #fff;
   position: relative;
 }
+img { max-width: 100%; height: auto; }
 
 .body-text {
   font-size: 10pt;
@@ -117,19 +127,19 @@ body {
   padding-bottom: 0.2rem; margin-bottom: 0.45rem;
 }
 
-/* ═══════════ MODERN ════════════════════════════════════════════════ */
-.tpl-modern.doc-page { padding: 0; overflow: hidden; }
+/* ═══════════ MODERN (grid + padding — matches index.css preview) ═════ */
+.tpl-modern.doc-page { padding: 0; overflow: visible; }
 .tpl-modern .tpl-grid {
-  display: flex;
-  min-height: 11in;
+  display: grid;
+  grid-template-columns: 30% 70%;
+  gap: 0;
+  align-items: start;
 }
 .tpl-modern .tpl-sidebar {
-  width: 30%;
-  flex-shrink: 0;
   background: linear-gradient(180deg, #f4f7fb 0%, #eef3f8 100%);
-  padding: 1.5rem 1rem 1.5rem 1.1rem;
+  padding: 2rem 1.1rem 2rem 1.35rem;
   border-right: 1px solid rgba(51, 107, 135, 0.35);
-  min-height: 11in;
+  box-shadow: inset -1px 0 0 rgba(255, 255, 255, 0.6);
 }
 .contact-sidebar-block {
   text-align: center;
@@ -175,8 +185,7 @@ body {
 .resume-top-contact .contact-sidebar-line .csl { text-align: left; }
 .resume-top-contact .contact-sidebar-line { text-align: left; }
 .tpl-modern .tpl-main {
-  width: 70%;
-  padding: 1.4rem 1.4rem 1.4rem 1.15rem;
+  padding: 2rem 2rem 2rem 1.5rem;
 }
 .tpl-modern .tpl-section-heading {
   font-size: 7pt; font-weight: 800; letter-spacing: 0.12em;

@@ -39,6 +39,9 @@ class Settings(BaseSettings):
 
     # --- Optional toggles / non-secret defaults ---
     debug: bool = False
+    # Comma-separated origins (e.g. https://app.example.com,http://localhost:5173).
+    # Use "*" only for open dev; wildcard disables credential sharing per CORS spec.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     openai_model: str = "gpt-4o"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 30

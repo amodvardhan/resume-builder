@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import type { PatchMatchPayload } from "../hooks/useDashboard";
 import type { MatchDetail } from "../types/api";
 
 interface MatchBreakdownProps {
@@ -6,6 +7,34 @@ interface MatchBreakdownProps {
   isLoading: boolean;
   onApply: (matchId: string) => void;
   applyBusy?: boolean;
+  onPatchMatch?: (payload: PatchMatchPayload) => void;
+  patchBusy?: boolean;
+}
+
+const PIPELINE_STAGES: { value: string; label: string }[] = [
+  { value: "new", label: "New" },
+  { value: "reviewing", label: "Reviewing" },
+  { value: "saved", label: "Saved" },
+  { value: "applied", label: "Applied" },
+  { value: "interviewing", label: "Interviewing" },
+  { value: "rejected", label: "Rejected" },
+  { value: "dismissed", label: "Dismissed" },
+];
+
+function isoToLocalDatetimeValue(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function localDatetimeValueToIso(local: string): string | null {
+  const t = local.trim();
+  if (!t) return null;
+  const d = new Date(t);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toISOString();
 }
 
 function ScoreBar({ label, score }: { label: string; score: number }) {
@@ -58,7 +87,25 @@ export default function MatchBreakdown({
   isLoading,
   onApply,
   applyBusy = false,
+  onPatchMatch,
+  patchBusy = false,
 }: MatchBreakdownProps) {
+  const [crmNotes, setCrmNotes] = useState("");
+  const [crmStage, setCrmStage] = useState("new");
+  const [crmFollowUpLocal, setCrmFollowUpLocal] = useState("");
+
+  useEffect(() => {
+    if (!detail) return;
+    setCrmNotes(detail.notes ?? "");
+    setCrmStage(detail.status);
+    setCrmFollowUpLocal(isoToLocalDatetimeValue(detail.next_follow_up_at));
+  }, [
+    detail?.id,
+    detail?.notes,
+    detail?.status,
+    detail?.next_follow_up_at,
+  ]);
+
   if (isLoading) {
     return (
       <div className="space-y-4 border-t border-border-light px-5 pb-5 pt-4">
@@ -142,6 +189,72 @@ export default function MatchBreakdown({
           <p className="mt-1.5 text-sm leading-relaxed text-primary/80">
             {match_details.recommendation}
           </p>
+        </div>
+      )}
+
+      {/* Pipeline & CRM */}
+      {onPatchMatch && (
+        <div className="rounded-xl border border-border-light bg-muted/40 p-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-secondary/80">
+            Pipeline &amp; follow-up
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-secondary">Stage</span>
+              <select
+                value={crmStage}
+                onChange={(e) => setCrmStage(e.target.value)}
+                className="ui-select ui-select-sm w-full font-medium"
+              >
+                {PIPELINE_STAGES.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block space-y-1.5">
+              <span className="text-xs font-medium text-secondary">
+                Next follow-up
+              </span>
+              <input
+                type="datetime-local"
+                value={crmFollowUpLocal}
+                onChange={(e) => setCrmFollowUpLocal(e.target.value)}
+                className="w-full rounded-lg border border-border-muted bg-surface px-3 py-2 text-xs font-medium text-primary shadow-sm"
+              />
+            </label>
+          </div>
+          <label className="mt-3 block space-y-1.5">
+            <span className="text-xs font-medium text-secondary">Notes</span>
+            <textarea
+              value={crmNotes}
+              onChange={(e) => setCrmNotes(e.target.value)}
+              placeholder="Recruiter name, referral, visa questions, next steps…"
+              rows={3}
+              className="w-full resize-y rounded-lg border border-border-muted bg-surface px-3 py-2 text-sm text-primary shadow-sm placeholder:text-secondary/50"
+            />
+          </label>
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              type="button"
+              disabled={patchBusy}
+              onClick={() =>
+                onPatchMatch({
+                  matchId: detail.id,
+                  status: crmStage,
+                  notes: crmNotes.trim() ? crmNotes : "",
+                  next_follow_up_at: localDatetimeValueToIso(crmFollowUpLocal),
+                })
+              }
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:opacity-90 disabled:opacity-50"
+            >
+              {patchBusy ? "Saving…" : "Save pipeline"}
+            </button>
+            <span className="text-[10px] text-secondary/70">
+              Stored only for your account.
+            </span>
+          </div>
         </div>
       )}
 

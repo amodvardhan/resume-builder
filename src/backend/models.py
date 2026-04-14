@@ -139,6 +139,11 @@ class Application(Base):
         ForeignKey("applications.id", ondelete="SET NULL"),
         nullable=True,
     )
+    job_match_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid,
+        ForeignKey("job_matches.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -150,6 +155,7 @@ class Application(Base):
         Index("idx_applications_resume_id", "resume_id"),
         Index("idx_applications_template_id", "template_id"),
         Index("idx_applications_reference_id", "reference_application_id"),
+        Index("idx_applications_job_match_id", "job_match_id"),
     )
 
 
@@ -325,6 +331,11 @@ class JobMatch(Base):
     )
     status: Mapped[str] = mapped_column(
         String(50), nullable=False, server_default="new"
+    )
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    next_follow_up_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),

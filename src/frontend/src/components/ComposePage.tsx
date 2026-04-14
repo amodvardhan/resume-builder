@@ -67,6 +67,8 @@ export default function ComposePage({
   const [composePhase, setComposePhase] = useState<ComposePhase>("input");
   const [draft, setDraft] = useState<TailorPreviewResponse | null>(null);
   const [result, setResult] = useState<TailorConfirmResponse | null>(null);
+  /** Carries through confirm when Compose was opened from a dashboard match. */
+  const [linkedMatchId, setLinkedMatchId] = useState<string | null>(null);
   const [templateStyle, setTemplateStyle] = useState<string>("classic");
   const [resumeSwapPrompt, setResumeSwapPrompt] = useState<{
     newId: string;
@@ -128,6 +130,7 @@ export default function ComposePage({
     setJobTitle(jobPrefill.job_title);
     setOrganization(jobPrefill.organization);
     setJobDescriptionHtml(jobPrefill.job_description_html);
+    setLinkedMatchId(jobPrefill.match_id ?? null);
     setComposePhase("input");
     setDraft(null);
     setResult(null);
@@ -148,6 +151,7 @@ export default function ComposePage({
     setJobTitle("");
     setOrganization("");
     setJobDescriptionHtml("");
+    setLinkedMatchId(null);
   }
 
   const handleResumeUploaded = useCallback((_res: ResumeUploadResponse) => {
@@ -189,6 +193,9 @@ export default function ComposePage({
           job_description_html: jobDescriptionHtml,
           cover_letter_sentiment: sentiment,
           ...contentFields,
+          ...(linkedMatchId
+            ? { job_match_id: linkedMatchId }
+            : {}),
         },
         {
           onSuccess: (data) => {
@@ -198,7 +205,17 @@ export default function ComposePage({
         },
       );
     },
-    [resumeId, templateStyle, jobTitle, organization, jobDescriptionHtml, sentiment, confirmMutation, userId],
+    [
+      resumeId,
+      templateStyle,
+      jobTitle,
+      organization,
+      jobDescriptionHtml,
+      sentiment,
+      confirmMutation,
+      userId,
+      linkedMatchId,
+    ],
   );
 
   const handleRegenerate = useCallback(() => {
@@ -258,6 +275,7 @@ export default function ComposePage({
     setJobTitle("");
     setOrganization("");
     setJobDescriptionHtml("");
+    setLinkedMatchId(null);
     setResumeSwapPrompt(null);
   }, []);
 
@@ -575,7 +593,7 @@ export default function ComposePage({
       {composePhase === "done" && result && (
         <div className="page-enter flex-1 overflow-y-auto bg-[#eaecf0]">
           <div className="page-shell !pb-10">
-            <div className="mx-auto w-full max-w-[860px]">
+            <div className="mx-auto w-full max-w-[210mm]">
             {/* Success banner + download buttons */}
             <div className="mb-6 rounded-2xl border border-success/30 bg-white shadow-sm">
               <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">

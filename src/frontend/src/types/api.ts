@@ -172,6 +172,8 @@ export interface TailorConfirmRequest {
   education: string;
   certifications: string;
   cover_letter: string;
+  /** Links the saved application to a dashboard match (from Compose prefill). */
+  job_match_id?: string | null;
 }
 
 export interface TailorConfirmResponse {
@@ -243,6 +245,8 @@ export interface Application {
   cover_letter_pdf_url?: string | null;
   cover_letter_text: string | null;
   reference_application_id: string | null;
+  /** Dashboard job match when Compose was started from a match card. */
+  job_match_id?: string | null;
   created_at: string;
   /** True when a draft snapshot exists so the API can rebuild PDFs (same as post-confirm). */
   export_snapshot_present?: boolean;
@@ -293,6 +297,10 @@ export interface MatchListItem {
   role_fit_score: number;
   strengths: string[];
   status: string;
+  /** Private CRM notes for this opportunity */
+  notes?: string | null;
+  /** ISO 8601 — reminder / next follow-up */
+  next_follow_up_at?: string | null;
   created_at: string;
 }
 
@@ -345,6 +353,8 @@ export interface ComposeJobPrefill {
   job_title: string;
   organization: string;
   job_description_html: string;
+  /** When set (from a match card), tailor confirm persists `job_match_id` on the Application. */
+  match_id?: string;
 }
 
 export interface JobListingWithScoreList {

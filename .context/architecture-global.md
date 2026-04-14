@@ -190,9 +190,11 @@ Meridian is an AI-powered career platform that (a) tailors resumes/cover letters
       "experience_3": "string",
       "skills": "string",
       "education": "string",
-      "cover_letter": "string"
+      "cover_letter": "string",
+      "job_match_id": "uuid | null"
     }
     ```
+    Optional **`job_match_id`**: when the user started Compose from a dashboard match card, this links the saved `Application` to that `job_matches` row (CRM traceability). Must belong to the authenticated user.
 * **Response (200 OK):**
     ```json
     {
@@ -225,6 +227,7 @@ Meridian is an AI-powered career platform that (a) tailors resumes/cover letters
 ### 3.6. Application History
 **`GET /api/v1/users/{user_id}/applications`**
 * **Purpose:** List all generated applications for a user (most recent first).
+* **Response items** include optional **`job_match_id`** when the application was confirmed from a linked dashboard match.
 
 **`GET /api/v1/applications/{application_id}`**
 * **Purpose:** Get full detail of a single application.
@@ -343,7 +346,7 @@ Meridian is an AI-powered career platform that (a) tailors resumes/cover letters
 
 **`GET /api/v1/dashboard/matches`** *(authenticated)*
 * **Purpose:** Paginated list of job matches sorted by score.
-* **Query params:** `page`, `per_page`, `status` (all/new/saved/applied/dismissed), `min_score`, `max_score`.
+* **Query params:** `page`, `per_page` (max 200 for large boards / Kanban), `status` (filter; e.g. new/reviewing/saved/applied/interviewing/rejected/dismissed), `min_score`, `max_score`.
 * **Response (200 OK):**
     ```json
     {
@@ -357,6 +360,8 @@ Meridian is an AI-powered career platform that (a) tailors resumes/cover letters
           "role_fit_score": 85.5,
           "strengths": ["string"],
           "status": "new",
+          "notes": "string | null",
+          "next_follow_up_at": "datetime | null",
           "created_at": "datetime"
         }
       ],
@@ -383,17 +388,27 @@ Meridian is an AI-powered career platform that (a) tailors resumes/cover letters
         "recommendation": "string"
       },
       "status": "new",
+      "notes": "string | null",
+      "next_follow_up_at": "datetime | null",
       "created_at": "datetime"
     }
     ```
 
 **`PATCH /api/v1/dashboard/matches/{match_id}`** *(authenticated)*
-* **Purpose:** Update match status (viewed, saved, applied, dismissed).
-* **Payload:**
+* **Purpose:** Partial update — pipeline status and/or lightweight CRM fields.
+* **Payload (at least one field):**
     ```json
-    { "status": "saved" }
+    {
+      "status": "saved",
+      "notes": "string",
+      "next_follow_up_at": "datetime | null"
+    }
     ```
-* **Response (200 OK):** Echoes the updated match.
+    Valid `status` values include: `new`, `reviewing`, `saved`, `applied`, `interviewing`, `rejected`, `dismissed`. Omit fields you do not want to change; send `next_follow_up_at: null` to clear a follow-up reminder.
+* **Response (200 OK):**
+    ```json
+    { "id": "uuid", "status": "saved", "notes": "string | null", "next_follow_up_at": "datetime | null" }
+    ```
 
 **`POST /api/v1/dashboard/matches/{match_id}/apply`** *(authenticated)*
 * **Purpose:** Bridges a matched job into the tailoring flow — returns a pre-filled tailor preview payload.

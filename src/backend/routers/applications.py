@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.backend.config import settings
 from src.backend.database import get_session
-from src.backend.models import Application, Resume, Template, User
+from src.backend.models import Application, JobMatch, Resume, Template, User
 from src.backend.schemas import (
     ApplicationRegenerateCoverPdfResponse,
     ApplicationRegenerateResumePdfResponse,
@@ -50,6 +50,28 @@ def _profile_photo_path_for_user(user: User | None) -> Path | None:
     if user is None:
         return None
     return resolved_photo_path(getattr(user, "profile_photo_path", None))
+
+
+def _application_to_response(a: Application) -> ApplicationResponse:
+    return ApplicationResponse(
+        id=a.id,
+        user_id=a.user_id,
+        resume_id=a.resume_id,
+        template_id=a.template_id,
+        job_title=a.job_title,
+        organization=a.organization,
+        job_description_html=a.job_description_html,
+        cover_letter_sentiment=a.cover_letter_sentiment,
+        tailored_resume_url=a.tailored_resume_url,
+        cover_letter_url=a.cover_letter_url,
+        resume_pdf_url=a.resume_pdf_url,
+        cover_letter_pdf_url=a.cover_letter_pdf_url,
+        cover_letter_text=a.cover_letter_text,
+        reference_application_id=a.reference_application_id,
+        job_match_id=getattr(a, "job_match_id", None),
+        created_at=a.created_at.isoformat(),
+        export_snapshot_present=_export_snapshot_present(a),
+    )
 
 
 def _export_snapshot_present(app: Application) -> bool:
@@ -228,6 +250,16 @@ async def tailor_confirm(
         "template_style": (payload.template_style or "classic"),
     }
 
+    resolved_match_id: uuid.UUID | None = None
+    if payload.job_match_id is not None:
+        jm = await session.get(JobMatch, payload.job_match_id)
+        if jm is None or jm.user_id != effective_user_id:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid job_match_id — must be your own dashboard match.",
+            )
+        resolved_match_id = jm.id
+
     application = Application(
         id=uuid.uuid4(),
         user_id=effective_user_id,
@@ -243,6 +275,7 @@ async def tailor_confirm(
         cover_letter_pdf_url=result.get("cover_letter_pdf_url") or None,
         cover_letter_text=payload.cover_letter,
         export_snapshot=confirm_snapshot,
+        job_match_id=resolved_match_id,
     )
     session.add(application)
     await session.commit()
@@ -325,27 +358,7 @@ async def list_user_applications(
         .order_by(Application.created_at.desc())
     )
     applications = result.scalars().all()
-    return [
-        ApplicationResponse(
-            id=a.id,
-            user_id=a.user_id,
-            resume_id=a.resume_id,
-            template_id=a.template_id,
-            job_title=a.job_title,
-            organization=a.organization,
-            job_description_html=a.job_description_html,
-            cover_letter_sentiment=a.cover_letter_sentiment,
-            tailored_resume_url=a.tailored_resume_url,
-            cover_letter_url=a.cover_letter_url,
-            resume_pdf_url=a.resume_pdf_url,
-            cover_letter_pdf_url=a.cover_letter_pdf_url,
-            cover_letter_text=a.cover_letter_text,
-            reference_application_id=a.reference_application_id,
-            created_at=a.created_at.isoformat(),
-            export_snapshot_present=_export_snapshot_present(a),
-        )
-        for a in applications
-    ]
+    return [_application_to_response(a) for a in applications]
 
 
 @router.get("/applications/{application_id}", response_model=ApplicationResponse)
@@ -357,24 +370,7 @@ async def get_application(
     a = await session.get(Application, application_id)
     if a is None:
         raise HTTPException(status_code=404, detail="Application not found")
-    return ApplicationResponse(
-        id=a.id,
-        user_id=a.user_id,
-        resume_id=a.resume_id,
-        template_id=a.template_id,
-        job_title=a.job_title,
-        organization=a.organization,
-        job_description_html=a.job_description_html,
-        cover_letter_sentiment=a.cover_letter_sentiment,
-        tailored_resume_url=a.tailored_resume_url,
-        cover_letter_url=a.cover_letter_url,
-        resume_pdf_url=a.resume_pdf_url,
-        cover_letter_pdf_url=a.cover_letter_pdf_url,
-        cover_letter_text=a.cover_letter_text,
-        reference_application_id=a.reference_application_id,
-        created_at=a.created_at.isoformat(),
-        export_snapshot_present=_export_snapshot_present(a),
-    )
+    return _application_to_response(a)
 
 
 @router.post(

@@ -4,7 +4,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   useDashboardStats,
   useDashboardMatches,
-  useUpdateMatchStatus,
+  usePatchMatch,
   useTriggerJobSync,
   useJobSyncStatus,
   useLastRunListings,
@@ -23,6 +23,7 @@ import type {
 } from "../types/api";
 import JobMatchCard from "./JobMatchCard";
 import LatestSearchListingsGrid from "./LatestSearchListingsGrid";
+import MatchesKanbanBoard from "./MatchesKanbanBoard";
 
 function escapeHtml(s: string): string {
   return s
@@ -70,6 +71,7 @@ function matchDetailToComposePrefill(detail: MatchDetail): ComposeJobPrefill {
     job_title: job.title,
     organization: org,
     job_description_html: descriptionTextToHtml(detail.job.description_text ?? ""),
+    match_id: detail.id,
   };
 }
 
@@ -80,7 +82,16 @@ interface DashboardProps {
   onComposeWithJobPrefill: (prefill: ComposeJobPrefill) => void;
 }
 
-const STATUS_FILTERS = ["all", "new", "saved", "applied"] as const;
+const STATUS_FILTERS = [
+  "all",
+  "new",
+  "saved",
+  "applied",
+  "reviewing",
+  "interviewing",
+  "rejected",
+  "dismissed",
+] as const;
 const SCORE_OPTIONS = [
   { label: "Any Score", value: 0 },
   { label: "80+", value: 80 },
@@ -218,7 +229,9 @@ export default function Dashboard({
   onNavigateProfile,
   onComposeWithJobPrefill,
 }: DashboardProps) {
-  const [viewMode, setViewMode] = useState<"listings" | "matches">("listings");
+  const [viewMode, setViewMode] = useState<"listings" | "matches" | "kanban">(
+    "listings",
+  );
   const [listingPage, setListingPage] = useState(1);
   const [matchPage, setMatchPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -235,13 +248,18 @@ export default function Dashboard({
     viewMode === "listings",
   );
   const matches = useDashboardMatches({
-    page: matchPage,
-    per_page: PER_PAGE,
-    status: statusFilter === "all" ? undefined : statusFilter,
+    page: viewMode === "kanban" ? 1 : matchPage,
+    per_page: viewMode === "kanban" ? 100 : PER_PAGE,
+    status:
+      viewMode === "kanban"
+        ? undefined
+        : statusFilter === "all"
+          ? undefined
+          : statusFilter,
     min_score: minScore || undefined,
   });
   const syncStatus = useJobSyncStatus();
-  const updateStatus = useUpdateMatchStatus();
+  const patchMatch = usePatchMatch();
   const triggerSync = useTriggerJobSync();
   const resumes = useUserResumes(userId);
   const scoreCompat = useScoreListingCompatibility();
@@ -289,7 +307,7 @@ export default function Dashboard({
         throw err;
       }
     },
-    onSuccess: (result) => {
+    onSuccess: (result, matchId) => {
       void queryClient.invalidateQueries({ queryKey: ["jobs", "last-run"] });
       if (result.kind === "listing") {
         const row = result.row;
@@ -301,7 +319,10 @@ export default function Dashboard({
         } else {
           setPostingFetchHint(null);
         }
-        onComposeWithJobPrefill(listingToComposePrefill(row));
+        onComposeWithJobPrefill({
+          ...listingToComposePrefill(row),
+          match_id: matchId,
+        });
       } else {
         setPostingFetchHint(null);
         onComposeWithJobPrefill(matchDetailToComposePrefill(result.detail));
@@ -323,9 +344,9 @@ export default function Dashboard({
 
   const handleStatusChange = useCallback(
     (id: string, status: string) => {
-      updateStatus.mutate({ matchId: id, status });
+      patchMatch.mutate({ matchId: id, status });
     },
-    [updateStatus],
+    [patchMatch],
   );
 
   const handleToggle = useCallback(
@@ -379,9 +400,12 @@ export default function Dashboard({
     [hasActiveResume, onNavigateProfile, scoreCompat.mutate],
   );
 
-  const totalPages = matches.data
-    ? Math.ceil(matches.data.total / PER_PAGE)
-    : 0;
+  const totalPages =
+    viewMode === "kanban"
+      ? 1
+      : matches.data
+        ? Math.ceil(matches.data.total / PER_PAGE)
+        : 0;
 
   const isEmpty =
     !matches.isLoading && (!matches.data || matches.data.items.length === 0);
@@ -579,7 +603,7 @@ export default function Dashboard({
           Choose what to review: every job from the last board search, or only
           AI-scored match cards.
         </p>
-        <div className="flex rounded-xl bg-muted p-1">
+        <div className="flex flex-wrap rounded-xl bg-muted p-1">
           <button
             type="button"
             onClick={() => setViewMode("listings")}
@@ -612,6 +636,20 @@ export default function Dashboard({
               </span>
             )}
           </button>
+          <button
+            type="button"
+            onClick={() => {
+              setViewMode("kanban");
+              setMatchPage(1);
+            }}
+            className={`rounded-lg px-3.5 py-2 text-xs font-semibold transition-all duration-200 ${
+              viewMode === "kanban"
+                ? "bg-surface text-primary shadow-sm ring-1 ring-black/4"
+                : "text-secondary hover:text-primary"
+            }`}
+          >
+            Kanban
+          </button>
         </div>
       </div>
 
@@ -621,29 +659,38 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Filters — only when there are matches to filter */}
-      {viewMode === "matches" && hasMatches && (
+      {/* Filters — match cards (status + score); kanban (score only — grouped by stage) */}
+      {(viewMode === "matches" || viewMode === "kanban") && hasMatches && (
         <div className="animate-fade-in-up stagger-3 mb-6 flex flex-wrap items-center gap-3 rounded-2xl border border-border-light bg-surface px-5 py-3.5 shadow-sm">
-          <span className="text-xs font-medium text-secondary">Filter:</span>
-          <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
-            {STATUS_FILTERS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => {
-                  setStatusFilter(s);
-                  setMatchPage(1);
-                }}
-                className={`rounded-lg px-3.5 py-1.5 text-xs font-medium capitalize transition-all duration-200 ${
-                  statusFilter === s
-                    ? "bg-surface text-primary shadow-sm ring-1 ring-black/4"
-                    : "text-secondary hover:text-primary"
-                }`}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
+          {viewMode === "kanban" && (
+            <span className="text-xs text-secondary">
+              Columns follow pipeline stage (up to 100 matches per load).{" "}
+            </span>
+          )}
+          {viewMode === "matches" && (
+            <>
+              <span className="text-xs font-medium text-secondary">Filter:</span>
+              <div className="flex items-center gap-1 rounded-xl bg-muted p-1">
+                {STATUS_FILTERS.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setStatusFilter(s);
+                      setMatchPage(1);
+                    }}
+                    className={`rounded-lg px-3.5 py-1.5 text-xs font-medium capitalize transition-all duration-200 ${
+                      statusFilter === s
+                        ? "bg-surface text-primary shadow-sm ring-1 ring-black/4"
+                        : "text-secondary hover:text-primary"
+                    }`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           <select
             value={minScore}
@@ -700,8 +747,9 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Loading skeleton — match cards */}
-      {viewMode === "matches" && matches.isLoading && (
+      {/* Loading skeleton — match cards / kanban */}
+      {(viewMode === "matches" || viewMode === "kanban") &&
+        matches.isLoading && (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
             <div
@@ -725,8 +773,10 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Empty state — match cards */}
-      {viewMode === "matches" && isEmpty && !matches.isError && (
+      {/* Empty state — match cards / kanban */}
+      {(viewMode === "matches" || viewMode === "kanban") &&
+        isEmpty &&
+        !matches.isError && (
         <div className="animate-fade-in-up flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-border-muted bg-surface px-6 py-20 text-center">
           <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand-subtle">
             <svg
@@ -793,8 +843,9 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Error state — match cards */}
-      {viewMode === "matches" && matches.isError && (
+      {/* Error state — match cards / kanban */}
+      {(viewMode === "matches" || viewMode === "kanban") &&
+        matches.isError && (
         <div className="animate-fade-in-up rounded-xl bg-danger-light p-4">
           <p className="text-sm text-danger">
             Failed to load matches. Please try again later.
@@ -802,7 +853,8 @@ export default function Dashboard({
         </div>
       )}
 
-      {viewMode === "matches" && applyFromMatchMutation.isError && (
+      {(viewMode === "matches" || viewMode === "kanban") &&
+        applyFromMatchMutation.isError && (
         <div className="animate-fade-in-up rounded-xl bg-danger-light px-4 py-3 text-sm text-danger">
           {extractErrorMessage(applyFromMatchMutation.error)}
         </div>
@@ -828,6 +880,11 @@ export default function Dashboard({
                   applyBusy={
                     applyFromMatchMutation.isPending &&
                     applyFromMatchMutation.variables === m.id
+                  }
+                  onPatchMatch={(payload) => patchMatch.mutate(payload)}
+                  patchBusy={
+                    patchMatch.isPending &&
+                    patchMatch.variables?.matchId === m.id
                   }
                   isExpanded={expandedId === m.id}
                   onToggle={() => handleToggle(m.id)}
@@ -891,6 +948,32 @@ export default function Dashboard({
           )}
         </>
       )}
+
+      {/* Kanban — pipeline columns */}
+      {viewMode === "kanban" &&
+        !matches.isLoading &&
+        matches.data &&
+        matches.data.items.length > 0 && (
+          <MatchesKanbanBoard
+            items={matches.data.items}
+            expandedId={expandedId}
+            onToggle={handleToggle}
+            onStatusChange={handleStatusChange}
+            onApply={handleApplyFromMatch}
+            onPatchMatch={(payload) => patchMatch.mutate(payload)}
+            getPatchBusy={(id) =>
+              Boolean(
+                patchMatch.isPending && patchMatch.variables?.matchId === id,
+              )
+            }
+            getApplyBusy={(id) =>
+              Boolean(
+                applyFromMatchMutation.isPending &&
+                  applyFromMatchMutation.variables === id,
+              )
+            }
+          />
+        )}
     </div>
   );
 }

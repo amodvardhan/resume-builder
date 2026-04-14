@@ -113,7 +113,7 @@ async def dashboard_stats(
 @router.get("/matches", response_model=MatchListResponse)
 async def list_matches(
     page: int = Query(1, ge=1),
-    per_page: int = Query(20, ge=1, le=100),
+    per_page: int = Query(20, ge=1, le=200),
     status: str | None = Query(None),
     min_score: float | None = Query(None, ge=0, le=100),
     session: AsyncSession = Depends(get_session),
@@ -215,17 +215,28 @@ async def update_match_status(
     current_user: User = Depends(get_current_user),
 ) -> MatchResponse:
     valid_statuses = {"new", "reviewing", "applied", "interviewing", "rejected", "saved", "dismissed"}
-    if payload.status not in valid_statuses:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Invalid status. Must be one of: {', '.join(sorted(valid_statuses))}",
-        )
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(status_code=422, detail="No fields to update")
 
     match = await session.get(JobMatch, match_id)
     if match is None or match.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Match not found")
 
-    match.status = payload.status
+    if "status" in data:
+        st = data["status"]
+        if st not in valid_statuses:
+            raise HTTPException(
+                status_code=422,
+                detail=f"Invalid status. Must be one of: {', '.join(sorted(valid_statuses))}",
+            )
+        match.status = st
+    if "notes" in data:
+        n = data["notes"]
+        match.notes = None if n is None else str(n)
+    if "next_follow_up_at" in data:
+        match.next_follow_up_at = data["next_follow_up_at"]
+
     await session.commit()
     await session.refresh(match)
     return match_response(match)

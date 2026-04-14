@@ -140,6 +140,7 @@ function ApplicationCard({
         </span>
         <span className="mt-0.5 block text-[11px] text-secondary">
           {formatted}
+          {application.job_match_id && " · Pipeline"}
           {application.reference_application_id && " · Cloned"}
         </span>
       </button>

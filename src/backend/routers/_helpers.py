@@ -138,14 +138,22 @@ def job_summary_response(
 
 
 def match_response(match: JobMatch) -> MatchResponse:
+    nfu = getattr(match, "next_follow_up_at", None)
+    raw_notes = getattr(match, "notes", None)
+    notes_out = (str(raw_notes).strip() if raw_notes is not None else "") or None
     return MatchResponse(
         id=match.id,
         status=match.status,
+        notes=notes_out,
+        next_follow_up_at=nfu.isoformat() if nfu is not None else None,
     )
 
 
 def match_list_item_response(match: JobMatch, job: JobListing) -> MatchListItemResponse:
     details = match.match_details if isinstance(match.match_details, dict) else {}
+    raw_notes = getattr(match, "notes", None)
+    notes_out = (str(raw_notes).strip() if raw_notes is not None else "") or None
+    nfu = getattr(match, "next_follow_up_at", None)
     return MatchListItemResponse(
         id=match.id,
         job=job_summary_response(job, include_description=False),
@@ -155,12 +163,17 @@ def match_list_item_response(match: JobMatch, job: JobListing) -> MatchListItemR
         role_fit_score=match.role_fit_score,
         strengths=details.get("strengths", []),
         status=match.status,
+        notes=notes_out,
+        next_follow_up_at=nfu.isoformat() if nfu is not None else None,
         created_at=match.created_at.isoformat(),
     )
 
 
 def match_detail_response(match: JobMatch, job: JobListing) -> MatchDetailResponse:
     details = match.match_details if isinstance(match.match_details, dict) else {}
+    raw_notes = getattr(match, "notes", None)
+    notes_out = (str(raw_notes).strip() if raw_notes is not None else "") or None
+    nfu = getattr(match, "next_follow_up_at", None)
     return MatchDetailResponse(
         id=match.id,
         job=job_summary_response(job, include_description=True),
@@ -171,5 +184,7 @@ def match_detail_response(match: JobMatch, job: JobListing) -> MatchDetailRespon
         strengths=details.get("strengths", []),
         match_details=details,
         status=match.status,
+        notes=notes_out,
+        next_follow_up_at=nfu.isoformat() if nfu is not None else None,
         created_at=match.created_at.isoformat(),
     )

@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, text
 from sqlalchemy.exc import DBAPIError
 
+from src.backend.config import settings
 from src.backend.database import Base, async_session_factory, engine
 from src.backend.models import Resume
 from src.backend.routers import (
@@ -32,6 +33,18 @@ from src.backend.services.resume_parser import extract_resume_text
 from src.backend.services.scheduler import shutdown_scheduler, start_scheduler
 
 logger = logging.getLogger(__name__)
+
+
+def _cors_middleware_kwargs() -> dict:
+    """Build CORS options from ``APP_CORS_ORIGINS``. Wildcard ``*`` implies ``allow_credentials=False``."""
+    raw = settings.cors_origins.strip()
+    if raw == "*":
+        return {"allow_origins": ["*"], "allow_credentials": False}
+    parts = [p.strip() for p in raw.split(",") if p.strip()]
+    if not parts:
+        parts = ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return {"allow_origins": parts, "allow_credentials": True}
+
 
 # Per-attempt DDL wait; full suite is retried on lock timeout (migrations are idempotent).
 _PG_LOCK_TIMEOUT = "60s"
@@ -202,6 +215,50 @@ async def _migrate_applications_export_snapshot() -> None:
         if col.scalar() is None:
             await conn.execute(text("ALTER TABLE applications ADD COLUMN export_snapshot JSONB"))
             logger.info("Migrated: applications.export_snapshot")
+
+
+async def _migrate_job_matches_crm_fields() -> None:
+    """Notes + follow-up timestamp for lightweight application CRM on matches."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        for col_name, ddl in (
+            ("notes", "ALTER TABLE job_matches ADD COLUMN notes TEXT"),
+            (
+                "next_follow_up_at",
+                "ALTER TABLE job_matches ADD COLUMN next_follow_up_at TIMESTAMPTZ",
+            ),
+        ):
+            col = await conn.execute(text(
+                "SELECT 1 FROM information_schema.columns "
+                "WHERE table_schema = 'public' AND table_name = 'job_matches' "
+                f"AND column_name = '{col_name}'"
+            ))
+            if col.scalar() is None:
+                await conn.execute(text(ddl))
+                logger.info("Migrated: job_matches.%s", col_name)
+
+
+async def _migrate_applications_job_match_id() -> None:
+    """Link tailored applications to dashboard job matches (pipeline traceability)."""
+    lt = text(f"SET LOCAL lock_timeout = '{_PG_LOCK_TIMEOUT}'")
+    async with engine.begin() as conn:
+        await conn.execute(lt)
+        col = await conn.execute(text(
+            "SELECT 1 FROM information_schema.columns "
+            "WHERE table_schema = 'public' AND table_name = 'applications' "
+            "AND column_name = 'job_match_id'"
+        ))
+        if col.scalar() is None:
+            await conn.execute(text(
+                "ALTER TABLE applications ADD COLUMN job_match_id UUID "
+                "REFERENCES job_matches(id) ON DELETE SET NULL"
+            ))
+            await conn.execute(text(
+                "CREATE INDEX IF NOT EXISTS idx_applications_job_match_id "
+                "ON applications (job_match_id)"
+            ))
+            logger.info("Migrated: applications.job_match_id")
 
 
 async def _migrate_job_tables() -> None:
@@ -441,10 +498,11 @@ async def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+_cors = _cors_middleware_kwargs()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
+    allow_origins=_cors["allow_origins"],
+    allow_credentials=_cors["allow_credentials"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -487,6 +545,8 @@ async def _startup() -> None:
     await _migrate_users_profile_photo_path()
     await _migrate_users_contact_fields()
     await _migrate_applications_export_snapshot()
+    await _migrate_job_matches_crm_fields()
+    await _migrate_applications_job_match_id()
 
     for attempt in range(_MIGRATION_RETRIES):
         try:

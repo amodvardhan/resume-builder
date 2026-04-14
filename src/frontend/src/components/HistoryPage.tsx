@@ -526,11 +526,21 @@ function ApplicationCard({
           <div className="min-w-0 flex-1">
             <div className="flex items-start justify-between gap-2">
               <h3 className="line-clamp-2 text-sm font-semibold leading-snug text-primary">{application.job_title}</h3>
-              {application.reference_application_id && (
-                <span className="shrink-0 rounded-full bg-accent-light px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
-                  Clone
-                </span>
-              )}
+              <div className="flex shrink-0 flex-wrap justify-end gap-1">
+                {application.job_match_id && (
+                  <span
+                    className="rounded-full bg-brand-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand"
+                    title="Started from a dashboard match — linked in pipeline CRM"
+                  >
+                    Pipeline
+                  </span>
+                )}
+                {application.reference_application_id && (
+                  <span className="rounded-full bg-accent-light px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent">
+                    Clone
+                  </span>
+                )}
+              </div>
             </div>
             <p className="mt-0.5 truncate text-sm text-secondary">{application.organization}</p>
             <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1">

@@ -92,25 +92,32 @@ export function useMatchDetail(matchId: string | null) {
 }
 
 // ---------------------------------------------------------------------------
-// Update match status (save / dismiss / applied)
+// Patch match — status and/or lightweight CRM (notes, follow-up)
 // ---------------------------------------------------------------------------
 
-export function useUpdateMatchStatus() {
+export type PatchMatchPayload = {
+  matchId: string;
+} & Partial<{
+  status: string;
+  notes: string | null;
+  next_follow_up_at: string | null;
+}>;
+
+export function usePatchMatch() {
   const queryClient = useQueryClient();
 
-  return useMutation<
-    void,
-    Error,
-    { matchId: string; status: string }
-  >({
-    mutationFn: async ({ matchId, status }) => {
-      await api.patch(`/api/v1/dashboard/matches/${matchId}`, { status });
+  return useMutation<void, Error, PatchMatchPayload>({
+    mutationFn: async ({ matchId, ...rest }) => {
+      const keys = Object.keys(rest) as (keyof typeof rest)[];
+      if (keys.length === 0) return;
+      await api.patch(`/api/v1/dashboard/matches/${matchId}`, rest);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["dashboard"] });
     },
   });
 }
+
 
 // ---------------------------------------------------------------------------
 // Trigger job sync (background: aggregators + optional org feeds)

@@ -6,6 +6,7 @@ Maps 1:1 to the contract in .context/architecture-global.md §3.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, EmailStr, Field
@@ -129,6 +130,7 @@ class ApplicationResponse(BaseModel):
     cover_letter_pdf_url: str | None = None
     cover_letter_text: str | None
     reference_application_id: uuid.UUID | None
+    job_match_id: uuid.UUID | None = None
     created_at: str
     # True when PDF can be regenerated from stored snapshot (same inputs as tailor confirm)
     export_snapshot_present: bool = False
@@ -198,6 +200,7 @@ class TailorConfirmRequest(BaseModel):
     education: str
     certifications: str = ""
     cover_letter: str
+    job_match_id: uuid.UUID | None = None
 
 
 class TailorConfirmResponse(BaseModel):
@@ -396,6 +399,8 @@ class MatchListItemResponse(BaseModel):
     role_fit_score: float
     strengths: list[str]
     status: str
+    notes: str | None = None
+    next_follow_up_at: str | None = None
     created_at: str
 
 
@@ -414,10 +419,14 @@ class MatchListResponse(BaseModel):
 class MatchResponse(BaseModel):
     id: uuid.UUID
     status: str
+    notes: str | None = None
+    next_follow_up_at: str | None = None
 
 
 class MatchStatusUpdateRequest(BaseModel):
-    status: str
+    status: str | None = None
+    notes: str | None = None
+    next_follow_up_at: datetime | None = None
 
 
 class MatchApplyResponse(BaseModel):

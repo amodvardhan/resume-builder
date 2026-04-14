@@ -35,6 +35,52 @@ from src.backend.models import (
 logger = logging.getLogger(__name__)
 
 
+def _build_match_search_context(
+    user_row: User,
+    pref_row: JobPreference | None,
+) -> str:
+    """Summarise profile + saved job preferences for relocation/market-aware matching."""
+    lines: list[str] = []
+    home = (getattr(user_row, "country", None) or "").strip()
+    if home:
+        lines.append(f"Profile country / base location (account): {home}")
+
+    if pref_row is None:
+        return "\n".join(lines)
+
+    tc = (
+        pref_row.target_country_codes
+        if isinstance(pref_row.target_country_codes, list)
+        else []
+    )
+    if tc:
+        lines.append(
+            "Target job markets (ISO country codes): "
+            + ", ".join(str(x) for x in tc)
+        )
+
+    pl = (
+        pref_row.preferred_locations
+        if isinstance(pref_row.preferred_locations, list)
+        else []
+    )
+    if pl:
+        lines.append(
+            "Preferred cities/regions: " + ", ".join(str(x) for x in pl)
+        )
+
+    if pref_row.experience_level:
+        lines.append(f"Experience level preference: {pref_row.experience_level}")
+    if pref_row.industry:
+        lines.append(f"Target industry: {pref_row.industry}")
+
+    kw = pref_row.keywords if isinstance(pref_row.keywords, list) else []
+    if kw:
+        lines.append("Search keywords: " + ", ".join(str(x) for x in kw))
+
+    return "\n".join(lines) if lines else ""
+
+
 # ---------------------------------------------------------------------------
 # Pydantic output model
 # ---------------------------------------------------------------------------
@@ -95,6 +141,17 @@ _MATCH_SYSTEM = (
     "- **recommendation**: Write 2-3 sentences summarising the candidate's fit. "
     "State whether this is a strong, moderate, or weak match and briefly explain "
     "why. Mention the most important strength and the most critical gap.\n\n"
+    "═══════════════════════════════════════════════════\n"
+    "JOB SEARCH CONTEXT (from the candidate's account — relocation / markets)\n"
+    "═══════════════════════════════════════════════════\n"
+    "{search_context_block}\n\n"
+    "When JOB SEARCH CONTEXT lists target countries or locations, assess whether the "
+    "role's worksite location, remote/hybrid policy, and any right-to-work, "
+    "sponsorship, or eligibility language in the JD align with those goals. You may "
+    "adjust **role_fit_score** by up to 10 points when there is a **clear** conflict; "
+    "do not change scores when the JD is silent or ambiguous. Reflect location or "
+    "authorization fit in strengths or gaps when relevant. Never provide legal or "
+    "immigration advice — stay informational only.\n\n"
     "Be precise and analytical. Do not inflate scores. A score of 70+ means a "
     "genuinely strong match on that dimension.\n\n"
     "{format_instructions}"
@@ -112,6 +169,8 @@ async def score_single_match(
     resume_text: str,
     core_skills: list[str],
     job_description: str,
+    *,
+    search_context: str | None = None,
 ) -> JobMatchScore:
     """Score a single resume against a single job description using LangChain."""
     parser = PydanticOutputParser(pydantic_object=JobMatchScore)
@@ -130,9 +189,17 @@ async def score_single_match(
 
     chain = prompt | llm | parser
 
+    ctx = (search_context or "").strip()
+    search_context_block = (
+        ctx
+        if ctx
+        else "No structured search preferences on file — infer relocation/market fit only from resume and JD."
+    )
+
     result: JobMatchScore = await chain.ainvoke({
         "core_skills": ", ".join(core_skills) if core_skills else "Not specified",
         "resume_text": resume_text,
+        "search_context_block": search_context_block,
         "format_instructions": parser.get_format_instructions(),
         "job_description": job_description,
     })
@@ -149,6 +216,7 @@ async def _score_one(
     sem: asyncio.Semaphore,
     resume_text: str,
     core_skills: list[str],
+    search_context: str | None,
     job: JobListing,
     user_id: uuid.UUID,
     session: AsyncSession,
@@ -160,6 +228,7 @@ async def _score_one(
                 resume_text=resume_text,
                 core_skills=core_skills,
                 job_description=job.description_text,
+                search_context=search_context,
             )
 
             match = JobMatch(
@@ -241,6 +310,8 @@ async def score_new_matches(
             )
         ).scalar_one_or_none()
 
+        search_context = _build_match_search_context(user_row, pref_row) or None
+
         # 4. Build the query for unscored JobListing rows
         already_scored_subq = (
             select(JobMatch.job_id)
@@ -300,7 +371,7 @@ async def score_new_matches(
         # 5. Score concurrently with semaphore
         sem = asyncio.Semaphore(5)
         tasks = [
-            _score_one(sem, resume_text, core_skills, job, user_id, session)
+            _score_one(sem, resume_text, core_skills, search_context, job, user_id, session)
             for job in unscored_jobs
         ]
         results = await asyncio.gather(*tasks)
@@ -370,10 +441,18 @@ async def score_and_upsert_match_for_listing(
             user_row.core_skills if isinstance(user_row.core_skills, list) else []
         )
 
+        pref_row = (
+            await session.execute(
+                select(JobPreference).where(JobPreference.user_id == user_id),
+            )
+        ).scalar_one_or_none()
+        search_context = _build_match_search_context(user_row, pref_row) or None
+
         score = await score_single_match(
             resume_text=resume_row.extracted_text,
             core_skills=core_skills,
             job_description=job.description_text,
+            search_context=search_context,
         )
 
         details: dict[str, Any] = {

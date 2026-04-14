@@ -1234,7 +1234,7 @@ export default function DraftReview({
 
         {/* Document canvas */}
         <main className="flex-1 overflow-y-auto bg-[#eaecf0]">
-          <div className="mx-auto max-w-[860px] px-4 py-8 sm:px-8">
+          <div className="mx-auto max-w-[210mm] px-4 py-8 sm:px-8">
             {/* Template badge */}
             <div className="mb-3 flex items-center justify-center gap-2">
               <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-semibold text-secondary shadow-sm">
@@ -1332,7 +1332,7 @@ export default function DraftReview({
 
       {/* Bottom action bar */}
       <div className="shrink-0 border-t border-border-muted bg-surface">
-        <div className="mx-auto flex max-w-[860px] items-center justify-between px-6 py-3">
+        <div className="mx-auto flex max-w-[210mm] items-center justify-between px-6 py-3">
           <button
             onClick={onBack}
             disabled={isConfirming}
