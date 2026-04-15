@@ -25,6 +25,8 @@ import type {
   UserProfile,
   UserUpdatePayload,
   MatchDetail,
+  IoJobFamily,
+  IoJobListResponse,
 } from "../types/api";
 
 // ---------------------------------------------------------------------------
@@ -450,6 +452,27 @@ export async function downloadGeneratedFile(fileName: string): Promise<void> {
     }
     throw err;
   }
+}
+
+// ---------------------------------------------------------------------------
+// International organization jobs (standalone module — /api/v1/io-jobs)
+// ---------------------------------------------------------------------------
+
+export async function fetchIoJobListings(params: {
+  page?: number;
+  page_size?: number;
+  family?: IoJobFamily | "";
+  q?: string;
+}): Promise<IoJobListResponse> {
+  const { data } = await api.get<IoJobListResponse>("/api/v1/io-jobs", {
+    params: {
+      page: params.page ?? 1,
+      page_size: params.page_size ?? 20,
+      ...(params.family ? { family: params.family } : {}),
+      ...(params.q?.trim() ? { q: params.q.trim() } : {}),
+    },
+  });
+  return data;
 }
 
 // ---------------------------------------------------------------------------

@@ -18,11 +18,21 @@ from sqlalchemy import select
 from src.backend.config import settings
 from src.backend.database import async_session_factory
 from src.backend.models import JobPreference
+from src.backend.services.io_job_ingest import run_io_job_rss_ingest
 from src.backend.services.job_integrations import run_job_sync_for_user
 
 logger = logging.getLogger(__name__)
 
 _scheduler: AsyncIOScheduler | None = None
+
+
+async def _run_scheduled_io_job_rss_ingest() -> None:
+    """Poll allowlisted IO RSS feeds (standalone from job-board sync)."""
+    logger.info("Scheduled IO job RSS ingest triggered")
+    try:
+        await run_io_job_rss_ingest()
+    except Exception:
+        logger.exception("Scheduled IO job RSS ingest failed")
 
 
 async def _run_scheduled_job_syncs() -> None:
@@ -80,6 +90,19 @@ def start_scheduler() -> None:
         name="Periodic job sync (integrations)",
         replace_existing=True,
     )
+    io_cron = (settings.io_job_rss_cron or "").strip()
+    if io_cron:
+        io_trigger = _parse_cron(io_cron)
+        _scheduler.add_job(
+            _run_scheduled_io_job_rss_ingest,
+            trigger=io_trigger,
+            id="io_job_rss_ingest",
+            name="IO careers RSS ingest",
+            replace_existing=True,
+        )
+        logger.info("IO RSS ingest scheduled — cron: %s", io_cron)
+    else:
+        logger.info("IO RSS ingest cron empty — periodic IO poll disabled")
     _scheduler.start()
     logger.info("Scheduler started — cron: %s", settings.job_sync_cron)
 

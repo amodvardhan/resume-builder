@@ -5,6 +5,8 @@ import ResumeIdentityPanel from "./ResumeIdentityPanel";
 import RichEditor from "./RichEditor";
 import SentimentSlider from "./SentimentSlider";
 import DraftReview from "./DraftReview";
+import ExportFidelityNote from "./ExportFidelityNote";
+import A4PageRail from "./A4PageRail";
 import TemplateGallery from "./TemplateGallery";
 import type { SentimentValue } from "./SentimentSlider";
 import {
@@ -593,7 +595,7 @@ export default function ComposePage({
       {composePhase === "done" && result && (
         <div className="page-enter flex-1 overflow-y-auto bg-[#eaecf0]">
           <div className="page-shell !pb-10">
-            <div className="mx-auto w-full max-w-[210mm]">
+            <div className="mx-auto w-full max-w-[min(100%,calc(210mm+5rem))]">
             {/* Success banner + download buttons */}
             <div className="mb-6 rounded-2xl border border-success/30 bg-white shadow-sm">
               <div className="flex flex-col gap-4 px-6 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-8">
@@ -673,11 +675,14 @@ export default function ComposePage({
               </div>
             </div>
 
+            <ExportFidelityNote className="mb-4" />
+
             {/* Styled preview of final documents — mirrors DraftReview template layout */}
             {draft ? (
               <>
                 {/* Resume page */}
-                <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                <A4PageRail className="mx-auto">
+                <div className={`doc-page doc-page--a4-zones rounded shadow-sm tpl-${templateStyle}`}>
                   {templateStyle === "modern" ? (
                     <div className="tpl-grid">
                       <div className="tpl-sidebar space-y-5">
@@ -837,6 +842,7 @@ export default function ComposePage({
                     </div>
                   )}
                 </div>
+                </A4PageRail>
 
                 {/* Page break indicator */}
                 <div className="my-5 flex items-center justify-center">
@@ -848,7 +854,8 @@ export default function ComposePage({
                 </div>
 
                 {/* Cover letter page — same template style */}
-                <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                <A4PageRail className="mx-auto">
+                <div className={`doc-page doc-page--a4-zones rounded shadow-sm tpl-${templateStyle}`}>
                   <div className="px-12 py-10 sm:px-16 sm:py-12">
                     <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-4">Cover Letter</h3>
                     <div className="text-sm leading-relaxed text-primary/85 whitespace-pre-wrap">
@@ -856,11 +863,13 @@ export default function ComposePage({
                     </div>
                   </div>
                 </div>
+                </A4PageRail>
               </>
             ) : (
               /* Fallback: no draft available (clone flow) — plain card */
               result.cover_letter_text && (
-                <div className={`doc-page rounded bg-surface shadow-sm tpl-${templateStyle}`}>
+                <A4PageRail className="mx-auto">
+                <div className={`doc-page doc-page--a4-zones rounded shadow-sm tpl-${templateStyle}`}>
                   <div className="px-12 py-10 sm:px-16 sm:py-12">
                     <h3 className="tpl-section-heading text-xs font-bold uppercase tracking-wider text-secondary mb-4">Cover Letter</h3>
                     <p className="whitespace-pre-wrap text-sm leading-relaxed text-primary/80">
@@ -868,6 +877,7 @@ export default function ComposePage({
                     </p>
                   </div>
                 </div>
+                </A4PageRail>
               )
             )}
 

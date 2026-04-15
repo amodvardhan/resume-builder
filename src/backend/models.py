@@ -349,3 +349,54 @@ class JobMatch(Base):
         Index("idx_job_matches_score", "user_id", "overall_score"),
         Index("idx_job_matches_status", "user_id", "status"),
     )
+
+
+class IoJobListing(Base):
+    """Vacancies ingested from allowlisted IO RSS feeds — not ``JobListing`` / job sync."""
+
+    __tablename__ = "io_job_listings"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, primary_key=True, default=uuid.uuid4
+    )
+    external_dedupe_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(512), nullable=False)
+    organization: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    location: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    apply_url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    eligibility_hint: Mapped[str | None] = mapped_column(Text, nullable=True)
+    family: Mapped[str] = mapped_column(String(16), nullable=False)
+    source_label: Mapped[str] = mapped_column(String(255), nullable=False)
+    feed_url: Mapped[str] = mapped_column(String(2048), nullable=False)
+    rss_guid: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    posted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+
+    __table_args__ = (
+        UniqueConstraint("external_dedupe_key", name="uq_io_job_listings_dedupe"),
+        Index("idx_io_job_listings_family_posted", "family", "posted_at"),
+        Index("idx_io_job_listings_last_seen", "last_seen_at"),
+    )
+
+
+class IoJobIngestMeta(Base):
+    """Singleton row tracking last IO RSS poll (for UI “last updated”)."""
+
+    __tablename__ = "io_job_ingest_meta"
+
+    singleton_key: Mapped[str] = mapped_column(String(16), primary_key=True)
+    last_completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)

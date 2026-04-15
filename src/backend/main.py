@@ -23,6 +23,7 @@ from src.backend.routers import (
     auth,
     dashboard,
     files,
+    io_jobs,
     jobs,
     preferences,
     resumes,
@@ -518,6 +519,7 @@ app.include_router(resumes.router)
 app.include_router(applications.router)
 app.include_router(preferences.router)
 app.include_router(jobs.router)
+app.include_router(io_jobs.router)
 app.include_router(dashboard.router)
 app.include_router(files.router)
 

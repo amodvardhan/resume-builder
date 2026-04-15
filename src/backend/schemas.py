@@ -437,3 +437,56 @@ class MatchApplyResponse(BaseModel):
     certifications: str = ""
     cover_letter: str
     original_resume_text: str = ""
+
+
+# ---------------------------------------------------------------------------
+# International organization jobs (standalone module — not JobListing / sync)
+# ---------------------------------------------------------------------------
+
+IoJobFamily = Literal["un", "mdb", "eu", "other"]
+
+
+class IoJobListingResponse(BaseModel):
+    """A curated or ingested vacancy targeting UN, MDBs, EU institutions, etc."""
+
+    id: uuid.UUID
+    family: IoJobFamily
+    title: str
+    organization: str | None = None
+    location: str | None = None
+    apply_url: str | None = None
+    eligibility_hint: str | None = Field(
+        default=None,
+        description="Short note e.g. EU citizenship may be required — not legal advice.",
+    )
+    posted_at: str | None = None
+    application_closes_at: str | None = None
+    source_label: str | None = Field(
+        default=None,
+        description="Human-readable origin e.g. UN Careers, ADB ACES.",
+    )
+
+
+class IoJobListResponse(BaseModel):
+    items: list[IoJobListingResponse]
+    total: int = Field(description="Count matching current filters (for pagination).")
+    catalog_total: int = Field(
+        default=0,
+        ge=0,
+        description="Total rows in IO catalog (ignores list filters).",
+    )
+    page: int
+    page_size: int
+    allowlisted_feed_count: int = Field(
+        default=0,
+        ge=0,
+        description="Number of APP_IO_JOB_RSS_URLS entries (ingestion may still be pending).",
+    )
+    catalog_refreshed_at: datetime | None = Field(
+        default=None,
+        description="Last successful IO RSS poll completion time (UTC).",
+    )
+    module_status: str = Field(
+        default="empty_catalog",
+        description="no_feeds_configured | empty_catalog | ready",
+    )

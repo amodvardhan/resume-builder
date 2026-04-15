@@ -9,6 +9,7 @@ import ProfilePage from "./components/ProfilePage";
 import Dashboard from "./components/Dashboard";
 import PreferencesPage from "./components/PreferencesPage";
 import ComposePage from "./components/ComposePage";
+import { IoJobsPage } from "./io-jobs";
 import type { ComposePhase } from "./components/ComposePage";
 import type { ComposeJobPrefill } from "./types/api";
 import { useUserProfile, useUpdateUser } from "./hooks/useResumeEngine";
@@ -115,6 +116,8 @@ function AuthenticatedApp() {
             }}
           />
         )}
+
+        {currentPage === "io_jobs" && <IoJobsPage />}
 
         {/* ── Preferences page ─────────────────────────────────── */}
         {currentPage === "preferences" && <PreferencesPage />}

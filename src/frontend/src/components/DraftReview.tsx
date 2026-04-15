@@ -14,6 +14,8 @@ import TextAlign from "@tiptap/extension-text-align";
 import type { ResumeContactInfo, TailorPreviewResponse } from "../types/api";
 import type { TemplateStyle } from "../constants/templateStyles";
 import { getTemplatePreviewHeader, templateDisplayName } from "../constants/templateStyles";
+import ExportFidelityNote from "./ExportFidelityNote";
+import A4PageRail from "./A4PageRail";
 import ResumeIdentityPanel from "./ResumeIdentityPanel";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -1108,6 +1110,10 @@ export default function DraftReview({
     () => [...resumeSections, COVER_LETTER_SECTION],
     [resumeSections],
   );
+  const resumeA4Specs = useMemo(
+    () => resumeSections.map((s) => ({ id: s.id, label: s.label })),
+    [resumeSections],
+  );
 
   useEffect(() => {
     setEdited({ ...draft });
@@ -1234,7 +1240,7 @@ export default function DraftReview({
 
         {/* Document canvas */}
         <main className="flex-1 overflow-y-auto bg-[#eaecf0]">
-          <div className="mx-auto max-w-[210mm] px-4 py-8 sm:px-8">
+          <div className="mx-auto w-full max-w-[min(100%,calc(210mm+5rem))] px-3 py-8 sm:px-6">
             {/* Template badge */}
             <div className="mb-3 flex items-center justify-center gap-2">
               <span className="rounded-full bg-surface px-3 py-1 text-[10px] font-semibold text-secondary shadow-sm">
@@ -1242,8 +1248,11 @@ export default function DraftReview({
               </span>
             </div>
 
+            <ExportFidelityNote className="mb-5 mx-auto max-w-[min(100%,210mm)]" />
+
             {/* Resume page */}
-            <div className={`doc-page rounded bg-surface ${tplCls}`}>
+            <A4PageRail className="mx-auto" sections={resumeA4Specs}>
+            <div className={`doc-page doc-page--a4-zones rounded ${tplCls}`}>
               {isModern ? (
                 <div className="tpl-grid">
                   <div className="tpl-sidebar space-y-5">
@@ -1300,6 +1309,7 @@ export default function DraftReview({
                 </div>
               )}
             </div>
+            </A4PageRail>
 
             {/* Page break */}
             <div className="my-5 flex items-center justify-center">
@@ -1311,11 +1321,18 @@ export default function DraftReview({
             </div>
 
             {/* Cover letter page */}
-            <div className={`doc-page rounded bg-surface ${tplCls}`}>
+            <A4PageRail
+              className="mx-auto"
+              sections={[
+                { id: COVER_LETTER_SECTION.id, label: COVER_LETTER_SECTION.label },
+              ]}
+            >
+            <div className={`doc-page doc-page--a4-zones rounded ${tplCls}`}>
               <div className="px-12 py-10 sm:px-16 sm:py-12">
                 {renderSectionBlock(COVER_LETTER_SECTION)}
               </div>
             </div>
+            </A4PageRail>
 
             <div className="h-8" />
           </div>

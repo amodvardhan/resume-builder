@@ -415,6 +415,18 @@ body {
     0 4px 16px rgba(0, 0, 0, 0.04);
 }
 
+/* Alternating A4-height bands — --a4-step set by A4PageRail (matches PDF page length) */
+.doc-page.doc-page--a4-zones {
+  background-color: var(--color-surface, #ffffff);
+  background-image: repeating-linear-gradient(
+    to bottom,
+    rgb(255 255 255) 0px,
+    rgb(255 255 255) var(--a4-step, 297mm),
+    rgb(248 250 252) var(--a4-step, 297mm),
+    rgb(248 250 252) calc(var(--a4-step, 297mm) * 2)
+  );
+}
+
 /* TipTap editor content within a document section */
 .doc-section .ProseMirror {
   outline: none;

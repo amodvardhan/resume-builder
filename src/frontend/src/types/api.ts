@@ -364,6 +364,37 @@ export interface JobListingWithScoreList {
   page_size: number;
 }
 
+/** Standalone international-organization job module (UN / MDB / EU) — not dashboard JobListing. */
+export type IoJobFamily = "un" | "mdb" | "eu" | "other";
+
+export interface IoJobListing {
+  id: string;
+  family: IoJobFamily;
+  title: string;
+  organization: string | null;
+  location: string | null;
+  apply_url: string | null;
+  eligibility_hint: string | null;
+  posted_at: string | null;
+  application_closes_at: string | null;
+  source_label: string | null;
+}
+
+export interface IoJobListResponse {
+  items: IoJobListing[];
+  /** Count matching current filters (pagination). */
+  total: number;
+  /** Total rows stored (ignores filters). */
+  catalog_total: number;
+  page: number;
+  page_size: number;
+  /** Allowlisted RSS feeds from APP_IO_JOB_RSS_URLS (ingestion may still be pending). */
+  allowlisted_feed_count: number;
+  /** Last IO RSS poll completion (ISO), if any. */
+  catalog_refreshed_at: string | null;
+  module_status: string;
+}
+
 export interface JobSyncStatus {
   id: string;
   status: string;
