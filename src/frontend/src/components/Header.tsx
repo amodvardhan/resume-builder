@@ -91,10 +91,10 @@ export default function Header({
 
   return (
     <header
-      className={`sticky top-0 z-50 border-b transition-all duration-300 ${
+      className={`sticky top-0 z-50 border-b transition-[border-color,background-color,box-shadow] duration-200 ${
         scrolled
-          ? "border-border-muted/70 bg-surface/75 shadow-[0_8px_32px_-12px_rgba(15,23,42,0.12)] backdrop-blur-xl"
-          : "border-transparent bg-surface/45 backdrop-blur-xl"
+          ? "border-border-muted bg-surface/92 shadow-[0_1px_0_0_rgba(255,255,255,0.75)] backdrop-blur-md"
+          : "border-transparent bg-surface/80 backdrop-blur-md"
       }`}
     >
       <div className="mx-auto flex h-[3.65rem] max-w-6xl items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
@@ -104,7 +104,7 @@ export default function Header({
           onClick={() => onNavigate("dashboard")}
           className="group flex min-w-0 items-center gap-2.5 rounded-xl py-1.5 text-left transition-opacity hover:opacity-90"
         >
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white shadow-md shadow-brand/15 ring-1 ring-border-muted/60">
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-border-muted bg-surface shadow-sm">
             <img
               src="/meridian-logo.png"
               alt=""
@@ -113,7 +113,7 @@ export default function Header({
               className="h-9 w-9 object-cover"
             />
           </div>
-          <span className="truncate text-[15px] font-semibold tracking-tight text-primary">
+          <span className="truncate text-[15px] font-semibold tracking-[-0.02em] text-primary">
             Meridian
           </span>
         </button>
@@ -123,7 +123,7 @@ export default function Header({
           className="hidden min-w-0 flex-1 justify-center sm:flex"
           aria-label="Main"
         >
-          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted/60 bg-muted/50 p-1 shadow-inner shadow-black/3">
+          <div className="flex max-w-full items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted bg-muted/80 p-1">
             {NAV_ITEMS.map((item) => {
               const isActive = currentPage === item.id;
               return (
@@ -133,10 +133,10 @@ export default function Header({
                   onClick={() => onNavigate(item.id)}
                   className={`
                     flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-medium
-                    transition-all duration-200
+                    transition-colors duration-150
                     ${isActive
-                      ? "bg-surface text-primary shadow-sm ring-1 ring-black/6"
-                      : "text-secondary hover:bg-surface/70 hover:text-primary"
+                      ? "bg-surface text-primary shadow-sm ring-1 ring-black/4"
+                      : "text-secondary hover:bg-surface/90 hover:text-primary"
                     }
                   `}
                 >
@@ -150,7 +150,7 @@ export default function Header({
 
         {/* Mobile navigation */}
         <nav className="flex min-w-0 flex-1 justify-end sm:hidden" aria-label="Main">
-          <div className="flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted/60 bg-muted/50 p-1">
+          <div className="flex max-w-[100vw] items-center gap-0.5 overflow-x-auto rounded-full border border-border-muted bg-muted/80 p-1">
             {NAV_ITEMS.map((item) => {
               const isActive = currentPage === item.id;
               return (
@@ -160,10 +160,10 @@ export default function Header({
                   onClick={() => onNavigate(item.id)}
                   className={`
                     flex shrink-0 items-center justify-center rounded-full p-2.5
-                    transition-all duration-200
+                    transition-colors duration-150
                     ${isActive
-                      ? "bg-surface text-brand shadow-sm ring-1 ring-black/6"
-                      : "text-secondary hover:bg-surface/80 hover:text-primary"
+                      ? "bg-surface text-brand shadow-sm ring-1 ring-black/4"
+                      : "text-secondary hover:bg-surface/90 hover:text-primary"
                     }
                   `}
                   title={item.label}
@@ -186,7 +186,7 @@ export default function Header({
                 onClick={() => onNavigate("profile")}
                 className="flex max-w-44 items-center gap-2 rounded-full py-1 pl-1 pr-2 transition-colors hover:bg-muted/90"
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-slate-700 to-slate-900 text-[11px] font-semibold text-white shadow-md ring-2 ring-white/90">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-linear-to-b from-slate-700 to-slate-900 text-[11px] font-semibold text-white ring-2 ring-surface">
                   {user.full_name
                     .split(" ")
                     .map((n) => n[0])

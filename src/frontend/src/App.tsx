@@ -26,7 +26,7 @@ export default function App() {
       <div className="flex min-h-screen items-center justify-center bg-background px-4">
         <div className="meridian-card-solid flex flex-col items-center gap-4 px-10 py-8">
           <div className="relative">
-            <div className="absolute inset-0 animate-pulse rounded-full bg-brand/15 blur-xl" aria-hidden />
+            <div className="absolute inset-0 animate-pulse rounded-full bg-brand/10 blur-xl" aria-hidden />
             <svg className="relative h-9 w-9 animate-spin text-brand" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-20" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-80" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -154,12 +154,12 @@ function AuthenticatedApp() {
 
       {/* Footer — hidden during review/done phases to give full canvas space */}
       {!(currentPage === "compose" && (composePhase === "review" || composePhase === "done")) && (
-        <footer className="mt-auto border-t border-border-muted/60 bg-surface/40 backdrop-blur-md">
+        <footer className="mt-auto border-t border-border-muted bg-surface/90 backdrop-blur-sm">
           <div className="mx-auto flex max-w-6xl flex-col gap-1 px-4 py-5 sm:flex-row sm:items-center sm:justify-between sm:px-6 lg:px-8">
-            <p className="text-[11px] font-medium tracking-wide text-secondary">
+            <p className="text-[11px] font-medium text-secondary">
               Meridian — AI-powered resume tailoring
             </p>
-            <p className="text-[11px] text-secondary/55">
+            <p className="text-[11px] text-secondary/70">
               Crafted for clarity and control
             </p>
           </div>
